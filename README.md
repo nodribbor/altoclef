@@ -118,6 +118,9 @@ no.
 ### [Schematic Resource Staging Guide](docs/SCHEMATIC_STAGING.md) (NEW!)
 A new feature that allows AltoClef to automatically gather and stage all required materials for Litematica schematics.
 
+### [Shears Implementation Guide](docs/SHEARS_IMPLEMENTATION.md) (NEW!)
+Comprehensive documentation on how AltoClef handles items that require shears, including automatic tool management.
+
 ### [TODO's/Future Features](TODO.md)
 
 ### [Development Guide](develop.md)
