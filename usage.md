@@ -8,16 +8,17 @@ Keep in mind this project is still in rapid development. A lot of features are p
 
 Commands are prefixed with `@`. Here's a list along with their functions:
 
-| command                | description                                                                                                            | examples      |
-|------------------------|------------------------------------------------------------------------------------------------------------------------|---------------|
-| `help`                 | Lists all commands                                                                                                     |               |
-| `gamer`                | Beats the game epic style                                                                                              | `@gamer`      |
-| `reload_settings`      | Reloads the local settings file. Run this every time you want your settings to be updated.                             |               |
-| `gamma {brightness=1}` | Sets the game's gamma. Useful for testing. 0 is "Moody" and 1 is "Bright", and you can go beyond to enable fullbright. | `@gamma 1000` |
-| `scan`                 | Logs the nearest given block currently found be `BlockScanner`.                                                        | `@scan dirt`  |
-| `status`               | Prints the status of the currently executing command. Mostly useful when running through `/msg`.                       |               |
-| `stop`                 | Forcefully stops the currently running command. The shortcut `CTRL+K` also achieves this.                              |               |
-| `test {testname}`      | Runs a "test" command. These vary, and will be described below.                                                        |               |
+| command                | description                                                                                                            | examples                   |
+|------------------------|------------------------------------------------------------------------------------------------------------------------|----------------------------|
+| `help`                 | Lists all commands                                                                                                     |                            |
+| `gamer`                | Beats the game epic style                                                                                              | `@gamer`                   |
+| `stageSchematic`       | Stages all required resources for a Litematica schematic placement into nearby chests (requires Litematica mod)        | `@stageSchematic`          |
+| `reload_settings`      | Reloads the local settings file. Run this every time you want your settings to be updated.                             |                            |
+| `gamma {brightness=1}` | Sets the game's gamma. Useful for testing. 0 is "Moody" and 1 is "Bright", and you can go beyond to enable fullbright. | `@gamma 1000`              |
+| `scan`                 | Logs the nearest given block currently found be `BlockScanner`.                                                        | `@scan dirt`               |
+| `status`               | Prints the status of the currently executing command. Mostly useful when running through `/msg`.                       |                            |
+| `stop`                 | Forcefully stops the currently running command. The shortcut `CTRL+K` also achieves this.                              |                            |
+| `test {testname}`      | Runs a "test" command. These vary, and will be described below.                                                        |                            |
 
 
 ### Notable test commands

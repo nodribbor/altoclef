@@ -115,6 +115,9 @@ no.
 
 ### [Usage Guide](usage.md)
 
+### [Schematic Resource Staging Guide](docs/SCHEMATIC_STAGING.md) (NEW!)
+A new feature that allows AltoClef to automatically gather and stage all required materials for Litematica schematics.
+
 ### [TODO's/Future Features](TODO.md)
 
 ### [Development Guide](develop.md)
