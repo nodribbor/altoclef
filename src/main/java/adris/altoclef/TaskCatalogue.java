@@ -130,8 +130,9 @@ public class TaskCatalogue {
             mine("warped_fungus", MiningRequirement.HAND, Blocks.WARPED_FUNGUS, Items.WARPED_FUNGUS).forceDimension(Dimension.NETHER);
             mine("crimson_roots", MiningRequirement.HAND, Blocks.CRIMSON_ROOTS, Items.CRIMSON_ROOTS).forceDimension(Dimension.NETHER);
             mine("warped_roots", MiningRequirement.HAND, Blocks.WARPED_ROOTS, Items.WARPED_ROOTS).forceDimension(Dimension.NETHER);
-            mine("weeping_vines", MiningRequirement.HAND, Blocks.WEEPING_VINES, Items.WEEPING_VINES).forceDimension(Dimension.NETHER);
-            mine("twisting_vines", MiningRequirement.HAND, Blocks.TWISTING_VINES, Items.TWISTING_VINES).forceDimension(Dimension.NETHER);
+            // Shears guarantee 100% drop rate for vines (vs 33% when mined by hand)
+            shear("weeping_vines", Blocks.WEEPING_VINES, Items.WEEPING_VINES).forceDimension(Dimension.NETHER).dontMineIfPresent();
+            shear("twisting_vines", Blocks.TWISTING_VINES, Items.TWISTING_VINES).forceDimension(Dimension.NETHER).dontMineIfPresent();
             mine("nether_wart_block", MiningRequirement.HAND, Blocks.NETHER_WART_BLOCK, Items.NETHER_WART_BLOCK).forceDimension(Dimension.NETHER);
             mine("warped_wart_block", MiningRequirement.HAND, Blocks.WARPED_WART_BLOCK, Items.WARPED_WART_BLOCK).forceDimension(Dimension.NETHER);
             mine("shroomlight", MiningRequirement.HAND, Blocks.SHROOMLIGHT, Items.SHROOMLIGHT).forceDimension(Dimension.NETHER);
@@ -166,6 +167,13 @@ public class TaskCatalogue {
             shear("large_fern", Blocks.LARGE_FERN, Items.LARGE_FERN).dontMineIfPresent();
             shear("dead_bush", Blocks.DEAD_BUSH, Items.DEAD_BUSH).dontMineIfPresent();
             shear("glow_lichen", Blocks.GLOW_LICHEN, Items.GLOW_LICHEN).dontMineIfPresent();
+            // Additional shearable blocks
+            shear("seagrass", Blocks.SEAGRASS, Items.SEAGRASS).dontMineIfPresent();
+            shear("tall_seagrass", Blocks.TALL_SEAGRASS, Items.TALL_SEAGRASS).dontMineIfPresent();
+            shear("kelp", Blocks.KELP, Items.KELP).dontMineIfPresent();
+            shear("nether_sprouts", Blocks.NETHER_SPROUTS, Items.NETHER_SPROUTS).forceDimension(Dimension.NETHER).dontMineIfPresent();
+            shear("small_dripleaf", Blocks.SMALL_DRIPLEAF, Items.SMALL_DRIPLEAF).dontMineIfPresent();
+            shear("hanging_roots", Blocks.HANGING_ROOTS, Items.HANGING_ROOTS).dontMineIfPresent();
             // Flowers
             simple("flower", ItemHelper.FLOWER, CollectFlowerTask::new);
             mine("allium", Items.ALLIUM);
