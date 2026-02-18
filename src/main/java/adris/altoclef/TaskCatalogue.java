@@ -169,7 +169,8 @@ public class TaskCatalogue {
             shear("glow_lichen", Blocks.GLOW_LICHEN, Items.GLOW_LICHEN).dontMineIfPresent();
             // Additional shearable blocks
             shear("seagrass", Blocks.SEAGRASS, Items.SEAGRASS).dontMineIfPresent();
-            shear("tall_seagrass", Blocks.TALL_SEAGRASS, Items.TALL_SEAGRASS).dontMineIfPresent();
+            // MC 1.21+: Items.TALL_SEAGRASS removed - tall seagrass drops regular seagrass when harvested
+            // shear("tall_seagrass", Blocks.TALL_SEAGRASS, Items.TALL_SEAGRASS).dontMineIfPresent();
             shear("kelp", Blocks.KELP, Items.KELP).dontMineIfPresent();
             shear("nether_sprouts", Blocks.NETHER_SPROUTS, Items.NETHER_SPROUTS).forceDimension(Dimension.NETHER).dontMineIfPresent();
             shear("small_dripleaf", Blocks.SMALL_DRIPLEAF, Items.SMALL_DRIPLEAF).dontMineIfPresent();

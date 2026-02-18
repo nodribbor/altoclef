@@ -416,9 +416,8 @@ public class StageSchematicResourcesTask extends Task {
             ItemStack stack = req.getItemStack();
             Item item = stack.getItem();
             
-            // Filter out water and lava (as specified)
-            if (item == Items.WATER_BUCKET || item == Items.LAVA_BUCKET ||
-                item == Items.WATER || item == Items.LAVA) {
+            // Filter out water and lava buckets - in MC 1.21+, Items.WATER and Items.LAVA don't exist
+            if (item == Items.WATER_BUCKET || item == Items.LAVA_BUCKET) {
                 Debug.logMessage("Skipping liquid: " + item);
                 continue;
             }

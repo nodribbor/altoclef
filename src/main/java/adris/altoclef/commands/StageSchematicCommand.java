@@ -7,6 +7,7 @@ import adris.altoclef.commandsystem.exception.CommandException;
 import adris.altoclef.tasks.construction.StageSchematicResourcesTask;
 import adris.altoclef.util.LitematicaHelper;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -15,9 +16,8 @@ import java.util.Optional;
 public class StageSchematicCommand extends Command {
     
     public StageSchematicCommand() throws CommandException {
-        super("stageSchematic", 
-              "Stage all required resources for the currently selected Litematica schematic placement into nearby chests",
-              new String[]{"litematicaStage", "schematicStage"});
+        super(List.of("stageSchematic", "litematicaStage", "schematicStage"), 
+              "Stage all required resources for the currently selected Litematica schematic placement into nearby chests");
     }
     
     @Override
