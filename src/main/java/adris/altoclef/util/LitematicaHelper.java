@@ -79,7 +79,7 @@ public class LitematicaHelper {
         @Override
         public String toString() {
             return String.format("%s x%d (missing: %d)", 
-                itemStack.getItem().toString(), totalCount, missingCount);
+                itemStack.getName().getString(), totalCount, missingCount);
         }
     }
     

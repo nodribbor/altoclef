@@ -33,6 +33,9 @@ public class StageSchematicResourcesTask extends Task {
     private static final int MIN_CHEST_COUNT = 1;
     private static final int SEARCH_RADIUS = 15;
     private static final int MAX_CHESTS_TO_PLACE = 10;
+    // Optimistic estimate: chest has 27 slots, assuming full 64-item stacks
+    // In practice, many items have smaller stack sizes or don't stack at all
+    private static final int ITEMS_PER_CHEST_OPTIMISTIC = 27 * 64; // 1728
     
     private final String placementName;
     private LitematicaHelper.SchematicPlacementInfo placementInfo;
@@ -423,7 +426,8 @@ public class StageSchematicResourcesTask extends Task {
             // Convert grass block to dirt (as specified)
             if (item == Items.GRASS_BLOCK) {
                 Debug.logMessage("Converting grass block to dirt");
-                stack = new ItemStack(Items.DIRT, (int) Math.min(req.getTotalCount(), Integer.MAX_VALUE));
+                // Create a representative stack (count doesn't matter here, totalRequired is tracked separately)
+                stack = new ItemStack(Items.DIRT, 1);
                 item = Items.DIRT;
             }
             
@@ -431,7 +435,8 @@ public class StageSchematicResourcesTask extends Task {
             if (item == Items.PODZOL || item == Items.MYCELIUM || 
                 item == Items.COARSE_DIRT) {
                 Debug.logMessage("Converting special dirt to normal dirt");
-                stack = new ItemStack(Items.DIRT, (int) Math.min(req.getTotalCount(), Integer.MAX_VALUE));
+                // Create a representative stack (count doesn't matter here, totalRequired is tracked separately)
+                stack = new ItemStack(Items.DIRT, 1);
                 item = Items.DIRT;
             }
             
@@ -476,14 +481,11 @@ public class StageSchematicResourcesTask extends Task {
     }
     
     private int estimateChestsNeeded() {
-        // Rough estimate: 1 chest = 27 slots
-        // This assumes full 64-item stacks (optimistic, as many items don't stack to 64)
-        // In practice, more chests may be needed for non-stackable or smaller-stack items
         long totalItems = materialStaging.stream()
             .mapToLong(s -> s.totalRequired)
             .sum();
         
-        int chestsNeeded = (int) Math.ceil(totalItems / 1728.0);
+        int chestsNeeded = (int) Math.ceil((double) totalItems / ITEMS_PER_CHEST_OPTIMISTIC);
         return Math.max(MIN_CHEST_COUNT, Math.min(chestsNeeded, MAX_CHESTS_TO_PLACE));
     }
     
