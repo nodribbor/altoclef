@@ -439,9 +439,12 @@ public class StageSchematicResourcesTask extends Task {
                 item = Items.DIRT;
             }
             
+            // Create final variable for use in lambda
+            final Item finalItem = item;
+            
             // Check if we already have this material type in staging
             Optional<MaterialStaging> existing = staging.stream()
-                .filter(s -> s.itemStack.getItem() == item)
+                .filter(s -> s.itemStack.getItem() == finalItem)
                 .findFirst();
             
             if (existing.isPresent()) {
