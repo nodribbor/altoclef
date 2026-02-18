@@ -423,7 +423,7 @@ public class StageSchematicResourcesTask extends Task {
             // Convert grass block to dirt (as specified)
             if (item == Items.GRASS_BLOCK) {
                 Debug.logMessage("Converting grass block to dirt");
-                stack = new ItemStack(Items.DIRT, stack.getCount());
+                stack = new ItemStack(Items.DIRT, (int) Math.min(req.getTotalCount(), Integer.MAX_VALUE));
                 item = Items.DIRT;
             }
             
@@ -431,7 +431,7 @@ public class StageSchematicResourcesTask extends Task {
             if (item == Items.PODZOL || item == Items.MYCELIUM || 
                 item == Items.COARSE_DIRT) {
                 Debug.logMessage("Converting special dirt to normal dirt");
-                stack = new ItemStack(Items.DIRT, stack.getCount());
+                stack = new ItemStack(Items.DIRT, (int) Math.min(req.getTotalCount(), Integer.MAX_VALUE));
                 item = Items.DIRT;
             }
             
@@ -476,7 +476,9 @@ public class StageSchematicResourcesTask extends Task {
     }
     
     private int estimateChestsNeeded() {
-        // Rough estimate: 1 chest = 27 slots, ~1728 items (64 stack * 27 slots)
+        // Rough estimate: 1 chest = 27 slots
+        // This assumes full 64-item stacks (optimistic, as many items don't stack to 64)
+        // In practice, more chests may be needed for non-stackable or smaller-stack items
         long totalItems = materialStaging.stream()
             .mapToLong(s -> s.totalRequired)
             .sum();
@@ -506,9 +508,29 @@ public class StageSchematicResourcesTask extends Task {
     }
     
     private BlockPos findBestChestForDeposit() {
-        // For now, just return the first chest
-        // TODO: Could be smarter about chest selection
-        return stagingChests.isEmpty() ? null : stagingChests.get(0);
+        if (stagingChests.isEmpty()) {
+            return null;
+        }
+        
+        AltoClef mod = AltoClef.getInstance();
+        BlockPos playerPos = mod.getPlayer().getBlockPos();
+        
+        // Find the closest chest to the player that we haven't filled yet
+        // For now, we'll use a simple approach: try each chest in order of proximity
+        BlockPos bestChest = null;
+        double bestDistance = Double.MAX_VALUE;
+        
+        for (BlockPos chest : stagingChests) {
+            double distance = Math.sqrt(playerPos.getSquaredDistance(chest));
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestChest = chest;
+            }
+        }
+        
+        // TODO: Check if chest is full before selecting it
+        // For now, if deposit fails, the task will handle it
+        return bestChest;
     }
     
     @Override
