@@ -35,12 +35,12 @@ public class StageSchematicResourcesTask extends Task {
     private static final int MIN_CHEST_COUNT = 1;
     private static final int SEARCH_RADIUS = 15;
     private static final int MAX_CHESTS_TO_PLACE = 10;
-    // Optimistic estimate: chest has 27 slots, assuming full 64-item stacks
-    // In practice, many items have smaller stack sizes or don't stack at all
-    private static final int ITEMS_PER_CHEST_OPTIMISTIC = 27 * 64; // 1728
-    
-    private static final int MAX_CHEST_SEARCH_ATTEMPTS = 5;
-    private static final int CHEST_SEARCH_LOG_INTERVAL = 10;
+    private static final int CHEST_SLOTS = 27;
+    private static final int BUFFER_CHESTS = 2;
+    private static final int MAX_PLACEMENT_ATTEMPTS = 10;
+    private static final double MIN_SCHEMATIC_CLEARANCE = 3.0;
+    private static final int MIN_CHEST_DISTANCE = 2;
+    private static final int MAX_CHEST_DISTANCE = 10;
     private final String placementName;
     private LitematicaHelper.SchematicPlacementInfo placementInfo;
     private List<MaterialStaging> materialStaging;
@@ -55,6 +55,7 @@ public class StageSchematicResourcesTask extends Task {
         INIT,
         PREPARE_TOOLS,
         FIND_OR_PLACE_CHESTS,
+        VALIDATE_CHESTS,
         GATHER_MATERIALS,
         DEPOSIT_MATERIALS,
         COMPLETE
@@ -123,6 +124,8 @@ public class StageSchematicResourcesTask extends Task {
                 return handlePrepareTools();
             case FIND_OR_PLACE_CHESTS:
                 return handleChests();
+            case VALIDATE_CHESTS:
+                return handleValidateChests();
             case GATHER_MATERIALS:
                 return handleGatherMaterials();
             case DEPOSIT_MATERIALS:
@@ -388,52 +391,82 @@ public class StageSchematicResourcesTask extends Task {
     }
     
     private Task handleChests() {
-        setDebugState("Finding or placing staging chests...");
-        
-        // Find nearby chests around the schematic origin
+        setDebugState("Setting up storage chests...");
+
+        BlockPos searchCenter = placementInfo.getOrigin();
+        int chestsNeeded = calculateRequiredChests();
+
+        // Find existing chests
+        stagingChests = findNearbyChests(searchCenter, SEARCH_RADIUS);
+
+        if (chestSearchAttempts == 0) {
+            Debug.logMessage("Found " + stagingChests.size() + " existing chests, need " + chestsNeeded + " total");
+        }
+
+        // Ensure we have enough chests in inventory + already placed
+        int chestsInInventory = AltoClef.getInstance().getItemStorage().getItemCount(Items.CHEST);
+        int totalChests = stagingChests.size() + chestsInInventory;
+
+        if (totalChests < chestsNeeded) {
+            int chestsToCraft = chestsNeeded - totalChests;
+            setDebugState("Crafting " + chestsToCraft + " more chests...");
+            return TaskCatalogue.getItemTask(Items.CHEST, chestsToCraft);
+        }
+
+        // Place one chest per tick until we have enough placed
+        int chestsToPlace = chestsNeeded - stagingChests.size();
+
+        if (chestsToPlace > 0) {
+            if (chestsInInventory <= 0) {
+                Debug.logError("Logic error: expected chests in inventory but have none; re-crafting");
+                chestSearchAttempts++;
+                if (chestSearchAttempts > MAX_PLACEMENT_ATTEMPTS) {
+                    Debug.logError("Cannot manage chests after " + MAX_PLACEMENT_ATTEMPTS + " attempts, aborting task");
+                    currentPhase = StagePhase.COMPLETE;
+                    return null;
+                }
+                return TaskCatalogue.getItemTask(Items.CHEST, chestsToPlace);
+            }
+
+            setDebugState("Placing chest " + (stagingChests.size() + 1) + "/" + chestsNeeded + "...");
+
+            BlockPos placePos = findChestPlacementLocation(searchCenter);
+
+            if (placePos == null) {
+                Debug.logError("Could not find suitable location to place chest!");
+                chestSearchAttempts++;
+                if (chestSearchAttempts > MAX_PLACEMENT_ATTEMPTS) {
+                    Debug.logError("Cannot find placement locations after " + MAX_PLACEMENT_ATTEMPTS + " attempts, aborting task");
+                    currentPhase = StagePhase.COMPLETE;
+                    return null;
+                }
+                return new TimeoutWanderTask(2);
+            }
+
+            return new PlaceBlockTask(placePos, new Block[]{Blocks.CHEST}, false, false);
+        }
+
+        // All chests placed — move on to validation
+        Debug.logMessage("Placed/found " + stagingChests.size() + " chests; validating...");
+        chestSearchAttempts = 0;
+        currentPhase = StagePhase.VALIDATE_CHESTS;
+        return null;
+    }
+
+    private Task handleValidateChests() {
+        int chestsNeeded = calculateRequiredChests();
+
         BlockPos searchCenter = placementInfo.getOrigin();
         stagingChests = findNearbyChests(searchCenter, SEARCH_RADIUS);
-        
-        // Only log every 10 attempts to avoid spam
-        if (chestSearchAttempts % CHEST_SEARCH_LOG_INTERVAL == 0) {
-            Debug.logMessage("Found " + stagingChests.size() + " existing chests near build site (attempt " + chestSearchAttempts + ")");
-        }
-        chestSearchAttempts++;
-        
-        // If we've tried too many times, proceed without chests
-        if (chestSearchAttempts > MAX_CHEST_SEARCH_ATTEMPTS && stagingChests.isEmpty()) {
-            Debug.logWarning("Could not find or place chests after " + chestSearchAttempts + " attempts. Proceeding anyway.");
+
+        if (stagingChests.size() < chestsNeeded) {
+            Debug.logWarning("Expected " + chestsNeeded + " chests but found " + stagingChests.size() + "; going back to placement");
+            currentPhase = StagePhase.FIND_OR_PLACE_CHESTS;
             chestSearchAttempts = 0;
-            currentPhase = StagePhase.GATHER_MATERIALS;
             return null;
         }
-        
-        // If we don't have enough chests, place some
-        if (stagingChests.size() < MIN_CHEST_COUNT) {
-            int chestsToPlace = Math.min(MAX_CHESTS_TO_PLACE - stagingChests.size(), 
-                                        estimateChestsNeeded() - stagingChests.size());
-            
-            if (chestsToPlace > 0) {
-                setDebugState("Need to place " + chestsToPlace + " more chest(s)...");
-                
-                // Ensure we have chests
-                int chestsInInventory = AltoClef.getInstance().getItemStorage()
-                    .getItemCount(Items.CHEST);
-                if (chestsInInventory < chestsToPlace) {
-                    return TaskCatalogue.getItemTask(Items.CHEST, chestsToPlace);
-                }
-                
-                // Place a chest near the origin
-                BlockPos placePos = findChestPlacementLocation(searchCenter);
-                if (placePos != null) {
-                    return new PlaceBlockTask(placePos, new Block[]{Blocks.CHEST}, false, false);
-                } else {
-                    Debug.logWarning("Could not find suitable location to place chest!");
-                }
-            }
-        }
-        
-        chestSearchAttempts = 0;
+
+        Debug.logMessage("Validated " + stagingChests.size() + " chests ready for storage");
         currentPhase = StagePhase.GATHER_MATERIALS;
         return null;
     }
@@ -499,8 +532,9 @@ public class StageSchematicResourcesTask extends Task {
         
         // Find a chest to deposit into
         if (stagingChests.isEmpty()) {
-            Debug.logWarning("No staging chests available!");
+            Debug.logError("No staging chests available for deposit! Returning to chest placement phase.");
             currentPhase = StagePhase.FIND_OR_PLACE_CHESTS;
+            chestSearchAttempts = 0;
             return null;
         }
         
@@ -608,33 +642,67 @@ public class StageSchematicResourcesTask extends Task {
         return chests;
     }
     
-    private int estimateChestsNeeded() {
-        long totalItems = materialStaging.stream()
-            .mapToLong(s -> s.totalRequired)
-            .sum();
-        
-        int chestsNeeded = (int) Math.ceil((double) totalItems / ITEMS_PER_CHEST_OPTIMISTIC);
-        return Math.max(MIN_CHEST_COUNT, Math.min(chestsNeeded, MAX_CHESTS_TO_PLACE));
+    private int calculateRequiredChests() {
+        long totalSlots = 0;
+
+        for (MaterialStaging staging : materialStaging) {
+            Item item = staging.itemStack.getItem();
+            int maxStackSize = item.getMaxCount();
+            long slotsNeeded = (long) Math.ceil((double) staging.totalRequired / maxStackSize);
+            totalSlots += slotsNeeded;
+        }
+
+        // Each chest has 27 slots; add buffer chests for overflow
+        int chestsNeeded = (int) Math.ceil((double) totalSlots / CHEST_SLOTS) + BUFFER_CHESTS;
+        chestsNeeded = Math.max(MIN_CHEST_COUNT, Math.min(chestsNeeded, MAX_CHESTS_TO_PLACE));
+
+        Debug.logMessage("Calculated " + chestsNeeded + " chests needed for " + totalSlots + " inventory slots");
+        return chestsNeeded;
     }
     
     private BlockPos findChestPlacementLocation(BlockPos near) {
-        // Try to find a suitable location near the schematic origin
         AltoClef mod = AltoClef.getInstance();
-        
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dz = -2; dz <= 2; dz++) {
-                for (int dy = 0; dy <= 2; dy++) {
-                    BlockPos pos = near.add(dx, dy, dz);
-                    // Check if this is a valid placement location
-                    if (WorldHelper.canPlace(pos) && 
-                        WorldHelper.isSolidBlock(pos.down())) {
+
+        // Try positions at increasing distances in all 4 cardinal directions
+        for (int distance = MIN_CHEST_DISTANCE; distance <= MAX_CHEST_DISTANCE; distance++) {
+            BlockPos[] candidates = {
+                near.add(distance, 0, 0),
+                near.add(-distance, 0, 0),
+                near.add(0, 0, distance),
+                near.add(0, 0, -distance),
+            };
+
+            for (BlockPos candidate : candidates) {
+                // Check a vertical range around each candidate
+                for (int dy = 3; dy >= -3; dy--) {
+                    BlockPos pos = candidate.add(0, dy, 0);
+                    BlockPos below = pos.down();
+
+                    if (WorldHelper.canPlace(pos) &&
+                        WorldHelper.isSolidBlock(below) &&
+                        !mod.getWorld().getBlockState(below).isLiquid() &&
+                        isOutsideSchematicBounds(pos)) {
                         return pos;
                     }
                 }
             }
         }
-        
+
+        // Fallback: try directly above the origin
+        for (int dy = 1; dy <= 5; dy++) {
+            BlockPos pos = near.add(0, dy, 0);
+            if (WorldHelper.canPlace(pos) && WorldHelper.isSolidBlock(pos.down())) {
+                return pos;
+            }
+        }
+
         return null;
+    }
+
+    private boolean isOutsideSchematicBounds(BlockPos pos) {
+        BlockPos origin = placementInfo.getOrigin();
+        double distance = Math.sqrt(pos.getSquaredDistance(origin));
+        return distance >= MIN_SCHEMATIC_CLEARANCE;
     }
     
     private BlockPos findBestChestForDeposit() {
