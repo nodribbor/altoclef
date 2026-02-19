@@ -173,8 +173,10 @@ public class TaskCatalogue {
             // shear("tall_seagrass", Blocks.TALL_SEAGRASS, Items.TALL_SEAGRASS).dontMineIfPresent();
             shear("kelp", Blocks.KELP, Items.KELP).dontMineIfPresent();
             shear("nether_sprouts", Blocks.NETHER_SPROUTS, Items.NETHER_SPROUTS).forceDimension(Dimension.NETHER).dontMineIfPresent();
+            //#if MC >= 11700
             shear("small_dripleaf", Blocks.SMALL_DRIPLEAF, Items.SMALL_DRIPLEAF).dontMineIfPresent();
             shear("hanging_roots", Blocks.HANGING_ROOTS, Items.HANGING_ROOTS).dontMineIfPresent();
+            //#endif
             // Flowers
             simple("flower", ItemHelper.FLOWER, CollectFlowerTask::new);
             mine("allium", Items.ALLIUM);

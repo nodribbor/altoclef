@@ -97,6 +97,8 @@ public class Items {
     public static final Item ROOTED_DIRT = UNSUPPORTED;
     public static final Item GLOW_INK_SAC = UNSUPPORTED;
     public static final Item GLOW_LICHEN = UNSUPPORTED;
+    public static final Item SMALL_DRIPLEAF = UNSUPPORTED;
+    public static final Item HANGING_ROOTS = UNSUPPORTED;
     public static final Item DEEPSLATE = UNSUPPORTED;
     public static final Item SMOOTH_BASALT = UNSUPPORTED;
     public static final Item COPPER_ORE = UNSUPPORTED;

@@ -260,8 +260,11 @@ public class StageSchematicResourcesTask extends Task {
     private boolean isStoneBasedMaterial(Item item) {
         return item == Items.STONE || item == Items.COBBLESTONE || 
                item == Items.STONE_BRICKS || item == Items.SMOOTH_STONE ||
-               item == Items.ANDESITE || item == Items.DIORITE || item == Items.GRANITE ||
-               item == Items.DEEPSLATE || item == Items.COBBLED_DEEPSLATE;
+               item == Items.ANDESITE || item == Items.DIORITE || item == Items.GRANITE
+               //#if MC >= 11700
+               || item == Items.DEEPSLATE || item == Items.COBBLED_DEEPSLATE
+               //#endif
+               ;
     }
     
     private boolean isWoodBasedMaterial(Item item) {
@@ -273,7 +276,11 @@ public class StageSchematicResourcesTask extends Task {
         return item == Items.IRON_INGOT || item == Items.GOLD_INGOT || 
                item == Items.DIAMOND || item == Items.EMERALD ||
                item == Items.COAL || item == Items.REDSTONE ||
-               item == Items.LAPIS_LAZULI || item == Items.COPPER_INGOT;
+               item == Items.LAPIS_LAZULI
+               //#if MC >= 11700
+               || item == Items.COPPER_INGOT
+               //#endif
+               ;
     }
     
     private Task handleChests() {
