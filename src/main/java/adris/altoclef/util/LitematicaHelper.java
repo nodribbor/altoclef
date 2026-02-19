@@ -245,8 +245,8 @@ public class LitematicaHelper {
                 return Optional.empty();
             }
             
-            // placementManager.getSelectedPlacement()
-            Method getSelectedMethod = placementManagerClass.getMethod("getSelectedPlacement");
+            // placementManager.getSelectedSchematicPlacement()
+            Method getSelectedMethod = placementManagerClass.getMethod("getSelectedSchematicPlacement");
             Object placement = getSelectedMethod.invoke(placementManager);
             
             return Optional.ofNullable(placement);
