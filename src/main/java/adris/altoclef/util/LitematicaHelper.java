@@ -2,9 +2,17 @@ package adris.altoclef.util;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +30,9 @@ public class LitematicaHelper {
     private static Class<?> schematicPlacementClass = null;
     private static Class<?> materialListBaseClass = null;
     private static Class<?> materialListEntryClass = null;
+
+    /** Maximum age (in milliseconds) of a material list file to be considered current (5 minutes). */
+    private static final long MAX_MATERIAL_FILE_AGE_MS = 5 * 60 * 1000;
     
     /**
      * Check if Litematica mod is loaded and available
@@ -438,13 +449,199 @@ public class LitematicaHelper {
     }
     
     /**
-     * Get the currently selected placement's info
+     * Get the currently selected placement's info.
+     * First tries to read from the latest material list file written by Litematica,
+     * then falls back to the reflection-based approach.
      */
     public static Optional<SchematicPlacementInfo> getSelectedPlacementInfo() {
+        // Try file-based approach first
+        Optional<File> fileOpt = findLatestMaterialListFile();
+        if (fileOpt.isPresent()) {
+            File file = fileOpt.get();
+            long fileAge = System.currentTimeMillis() - file.lastModified();
+            if (fileAge < MAX_MATERIAL_FILE_AGE_MS) {
+                Debug.logMessage("Reading material list from file (age: " + (fileAge / 1000) + "s)");
+                List<MaterialRequirement> materials = parseMaterialListFile(file);
+                if (!materials.isEmpty()) {
+                    String schematicName = "Unknown Schematic";
+                    // Default origin of (0,0,0) is used as a fallback when reflection cannot retrieve it
+                    BlockPos origin = new BlockPos(0, 0, 0);
+
+                    // Try to get placement name and origin via reflection
+                    if (isLitematicaLoaded()) {
+                        try {
+                            Method getManagerMethod = dataManagerClass.getMethod("getSchematicPlacementManager");
+                            Object placementManager = getManagerMethod.invoke(null);
+                            if (placementManager != null) {
+                                Method getSelectedMethod = placementManagerClass.getMethod("getSelectedSchematicPlacement");
+                                Object placement = getSelectedMethod.invoke(placementManager);
+                                if (placement != null) {
+                                    Method getNameMethod = schematicPlacementClass.getMethod("getName");
+                                    schematicName = (String) getNameMethod.invoke(placement);
+
+                                    Method getOriginMethod = schematicPlacementClass.getMethod("getOrigin");
+                                    Object originObj = getOriginMethod.invoke(placement);
+                                    if (originObj instanceof net.minecraft.util.math.BlockPos pos) {
+                                        origin = pos;
+                                    } else {
+                                        try {
+                                            Method getXMethod = originObj.getClass().getMethod("getX");
+                                            Method getYMethod = originObj.getClass().getMethod("getY");
+                                            Method getZMethod = originObj.getClass().getMethod("getZ");
+                                            origin = new BlockPos(
+                                                (int) getXMethod.invoke(originObj),
+                                                (int) getYMethod.invoke(originObj),
+                                                (int) getZMethod.invoke(originObj)
+                                            );
+                                        } catch (NoSuchMethodException e) {
+                                            Debug.logWarning("Could not extract origin coordinates: " + e.getMessage());
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (Exception e) {
+                            Debug.logWarning("Could not get placement details via reflection: " + e.getMessage());
+                        }
+                    }
+
+                    return Optional.of(new SchematicPlacementInfo(schematicName, origin, materials));
+                }
+            } else {
+                Debug.logMessage("Material list file is old (age: " + (fileAge / 1000) + "s). Please regenerate it using 'Write to file' in Litematica.");
+            }
+        }
+
+        // Fall back to reflection-based approach
         Optional<Object> placement = getSelectedPlacement();
         if (placement.isPresent()) {
             return getPlacementInfo(placement.get());
         }
         return Optional.empty();
     }
+
+    /**
+     * Find the most recent material list file in the Litematica config directory.
+     */
+    private static Optional<File> findLatestMaterialListFile() {
+        try {
+            File minecraftDir = MinecraftClient.getInstance().runDirectory;
+            File litematicaDir = new File(minecraftDir, "config/litematica");
+
+            if (!litematicaDir.exists() || !litematicaDir.isDirectory()) {
+                Debug.logWarning("Litematica config directory not found: " + litematicaDir.getAbsolutePath());
+                return Optional.empty();
+            }
+
+            File[] files = litematicaDir.listFiles((dir, name) ->
+                name.startsWith("material_list_") && name.endsWith(".txt")
+            );
+
+            if (files == null || files.length == 0) {
+                Debug.logMessage("No material list files found. Please use 'Write to file' in Litematica's material list GUI.");
+                return Optional.empty();
+            }
+
+            File latestFile = files[0];
+            for (File file : files) {
+                if (file.lastModified() > latestFile.lastModified()) {
+                    latestFile = file;
+                }
+            }
+
+            Debug.logMessage("Found material list file: " + latestFile.getName());
+            return Optional.of(latestFile);
+
+        } catch (Exception e) {
+            Debug.logWarning("Error finding material list file: " + e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Parse a Litematica material list file into a list of MaterialRequirements.
+     */
+    private static List<MaterialRequirement> parseMaterialListFile(File file) {
+        List<MaterialRequirement> materials = new ArrayList<>();
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            boolean inDataSection = false;
+
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("+") || line.startsWith("| Material List")) {
+                    continue;
+                }
+
+                if (line.contains("| Item") && line.contains("Total") && line.contains("Missing")) {
+                    inDataSection = true;
+                    continue;
+                }
+
+                if (line.trim().isEmpty()) {
+                    continue;
+                }
+
+                if (inDataSection && line.startsWith("|")) {
+                    try {
+                        String[] parts = line.split("\\|");
+                        if (parts.length >= 4) {
+                            String itemName = parts[1].trim();
+                            String totalStr = parts[2].trim();
+                            String missingStr = parts[3].trim();
+
+                            if (itemName.isEmpty() || itemName.equals("Item")) {
+                                continue;
+                            }
+
+                            long totalCount = Long.parseLong(totalStr);
+                            long missingCount = Long.parseLong(missingStr);
+
+                            String itemId = convertItemNameToId(itemName);
+                            Identifier identifier = Identifier.of(itemId);
+
+                            if (Registries.ITEM.containsId(identifier)) {
+                                Item item = Registries.ITEM.get(identifier);
+                                ItemStack stack = new ItemStack(item);
+                                materials.add(new MaterialRequirement(stack, totalCount, missingCount));
+                                Debug.logMessage("  Parsed: " + itemName + " -> " + itemId + " (Total: " + totalCount + ", Missing: " + missingCount + ")");
+                            } else {
+                                Debug.logWarning("  Unknown item ID: " + itemId + " (from name: " + itemName + ")");
+                            }
+                        }
+                    } catch (NumberFormatException e) {
+                        // Skip lines with non-numeric count fields (e.g., separator or header lines)
+                        Debug.logMessage("  Skipping line with non-numeric count: " + line.trim());
+                    }
+                }
+            }
+
+            Debug.logMessage("Parsed " + materials.size() + " materials from file");
+
+        } catch (IOException e) {
+            Debug.logWarning("Error reading material list file: " + e.getMessage());
+        }
+
+        return materials;
+    }
+
+    /**
+     * Convert a display name to a Minecraft item ID.
+     * e.g., "Grass Block" -> "minecraft:grass_block"
+     * Handles common display name patterns used in Litematica material list files.
+     */
+    private static String convertItemNameToId(String displayName) {
+        String id = displayName.toLowerCase()
+            .replace(" ", "_")
+            .replace("'", "")
+            .replace("-", "_")
+            .replace("(", "")
+            .replace(")", "");
+
+        if (!id.contains(":")) {
+            id = "minecraft:" + id;
+        }
+
+        return id;
+    }
+
 }
