@@ -371,10 +371,9 @@ public class StageSchematicResourcesTask extends Task {
             item == Items.CYAN_WOOL || item == Items.PURPLE_WOOL || item == Items.BLUE_WOOL ||
             item == Items.BROWN_WOOL || item == Items.GREEN_WOOL || item == Items.RED_WOOL ||
             item == Items.BLACK_WOOL) return true;
-        if (item == Items.OAK_LEAVES || item == Items.SPRUCE_LEAVES || item == Items.BIRCH_LEAVES ||
-            item == Items.JUNGLE_LEAVES || item == Items.ACACIA_LEAVES || item == Items.DARK_OAK_LEAVES ||
-            item == Items.MANGROVE_LEAVES || item == Items.AZALEA_LEAVES ||
-            item == Items.FLOWERING_AZALEA_LEAVES) return true;
+        // Use string matching for leaves to handle all versions (e.g. MANGROVE_LEAVES added in 1.19)
+        String name = item.toString().toLowerCase();
+        if (name.endsWith("_leaves")) return true;
         return false;
     }
     
