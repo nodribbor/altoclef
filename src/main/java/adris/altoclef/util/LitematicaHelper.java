@@ -308,10 +308,13 @@ public class LitematicaHelper {
             Object materialList = getMaterialListMethod.invoke(placementObj);
             
             // Get all materials from the list
-            Method getMaterialsAllMethod = materialListBaseClass.getMethod("getMaterialsAll");
-            Object materialsObj = getMaterialsAllMethod.invoke(materialList);
+            // Use getMaterialsFiltered(true) instead of getMaterialsAll() because
+            // materialListAll may be empty even after generating the material list in Litematica's GUI.
+            // The 'true' parameter forces a refresh of the filtered list.
+            Method getMaterialsFilteredMethod = materialListBaseClass.getMethod("getMaterialsFiltered", boolean.class);
+            Object materialsObj = getMaterialsFilteredMethod.invoke(materialList, true);
             
-            // Convert ImmutableList to List
+            // Iterate over returned materials list
             List<MaterialRequirement> materials = new ArrayList<>();
             if (materialsObj instanceof Iterable) {
                 for (Object entryObj : (Iterable<?>) materialsObj) {
