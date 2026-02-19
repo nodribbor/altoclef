@@ -33,15 +33,27 @@ public class LitematicaHelper {
         }
         
         try {
-            // Try to load Litematica's main DataManager class
-            dataManagerClass = Class.forName("litematica.data.DataManager");
-            placementManagerClass = Class.forName("litematica.schematic.placement.SchematicPlacementManager");
-            schematicPlacementClass = Class.forName("litematica.schematic.placement.SchematicPlacement");
-            materialListBaseClass = Class.forName("litematica.materials.MaterialListBase");
-            materialListEntryClass = Class.forName("litematica.materials.MaterialListEntry");
-            itemTypeClass = Class.forName("malilib.util.data.ItemType");
-            litematicaAvailable = true;
-            Debug.logMessage("Litematica integration enabled");
+            // Try modern package structure first (MC 1.14+ / Litematica 0.0.0-dev.20190902+)
+            try {
+                dataManagerClass = Class.forName("fi.dy.masa.litematica.data.DataManager");
+                placementManagerClass = Class.forName("fi.dy.masa.litematica.schematic.placement.SchematicPlacementManager");
+                schematicPlacementClass = Class.forName("fi.dy.masa.litematica.schematic.placement.SchematicPlacement");
+                materialListBaseClass = Class.forName("fi.dy.masa.litematica.materials.MaterialListBase");
+                materialListEntryClass = Class.forName("fi.dy.masa.litematica.materials.MaterialListEntry");
+                itemTypeClass = Class.forName("fi.dy.masa.malilib.util.data.ItemType");
+                litematicaAvailable = true;
+                Debug.logMessage("Litematica integration enabled (modern version)");
+            } catch (ClassNotFoundException e) {
+                // Fall back to legacy package structure (MC 1.13.x and below)
+                dataManagerClass = Class.forName("litematica.data.DataManager");
+                placementManagerClass = Class.forName("litematica.schematic.placement.SchematicPlacementManager");
+                schematicPlacementClass = Class.forName("litematica.schematic.placement.SchematicPlacement");
+                materialListBaseClass = Class.forName("litematica.materials.MaterialListBase");
+                materialListEntryClass = Class.forName("litematica.materials.MaterialListEntry");
+                itemTypeClass = Class.forName("malilib.util.data.ItemType");
+                litematicaAvailable = true;
+                Debug.logMessage("Litematica integration enabled (legacy version)");
+            }
         } catch (ClassNotFoundException e) {
             litematicaAvailable = false;
             Debug.logMessage("Litematica not found, schematic staging features disabled");
