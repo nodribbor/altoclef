@@ -64,7 +64,7 @@ public class CollectFoodTask extends Task {
             new CropTarget(Items.CARROT, Blocks.CARROTS)
     };
 
-    private static final double ANIMAL_SEARCH_RANGE = 64.0;
+    private static final double ANIMAL_SEARCH_RANGE = 80.0;
 
     private final double unitsNeeded;
     private final TimerGame checkNewOptionsTimer = new TimerGame(10);
@@ -313,6 +313,8 @@ public class CollectFoodTask extends Task {
 
             if (bestEntity != null) {
                 setDebugState("Killing " + bestEntity.getType().getTranslationKey());
+                // Reset the blacklist so the entity tracker can locate this entity again
+                mod.getEntityTracker().resetEntityBlacklist(bestEntity);
                 currentResourceTask = killTaskOrNull(bestEntity, notBaby, bestRawFood);
                 return currentResourceTask;
             }
