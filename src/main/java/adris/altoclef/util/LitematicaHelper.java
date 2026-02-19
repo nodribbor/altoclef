@@ -287,7 +287,7 @@ public class LitematicaHelper {
                     z = (int) getZMethod.invoke(originObj);
                 } catch (NoSuchMethodException e) {
                     // Fallback: try as vanilla BlockPos
-                    net.minecraft.core.BlockPos pos = (net.minecraft.core.BlockPos) originObj;
+                    net.minecraft.util.math.BlockPos pos = (net.minecraft.util.math.BlockPos) originObj;
                     x = pos.getX();
                     y = pos.getY();
                     z = pos.getZ();
@@ -295,7 +295,7 @@ public class LitematicaHelper {
             } else {
                 // Vanilla Minecraft BlockPos
                 // In Fabric environment, these methods ARE available
-                net.minecraft.core.BlockPos pos = (net.minecraft.core.BlockPos) originObj;
+                net.minecraft.util.math.BlockPos pos = (net.minecraft.util.math.BlockPos) originObj;
                 x = pos.getX();
                 y = pos.getY();
                 z = pos.getZ();
