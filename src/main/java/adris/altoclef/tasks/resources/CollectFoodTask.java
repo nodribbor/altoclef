@@ -64,6 +64,8 @@ public class CollectFoodTask extends Task {
             new CropTarget(Items.CARROT, Blocks.CARROTS)
     };
 
+    private static final double ANIMAL_SEARCH_RANGE = 64.0;
+
     private final double unitsNeeded;
     private final TimerGame checkNewOptionsTimer = new TimerGame(10);
     private final SmeltInSmokerTask smeltTask = null;
@@ -259,7 +261,7 @@ public class CollectFoodTask extends Task {
                     return currentResourceTask;
                 }
             }
-            // Cooked foods
+            // Cooked foods - use entity tracker first, then fall back to direct world scan
             double bestScore = 0;
             Entity bestEntity = null;
             Item bestRawFood = null;
@@ -281,6 +283,34 @@ public class CollectFoodTask extends Task {
                     bestRawFood = cookable.getRaw();
                 }
             }
+
+            // Fallback: scan world entities directly within ANIMAL_SEARCH_RANGE for animals
+            // that may be blacklisted in the entity tracker or not yet tracked
+            if (bestEntity == null) {
+                for (Entity entity : mod.getWorld().getEntities()) {
+                    if (!entity.isAlive()) continue;
+                    if (!notBaby.test(entity)) continue;
+                    // Check type compatibility before computing distance (cheaper check first)
+                    CookableFoodTarget matched = null;
+                    for (CookableFoodTarget cookable : COOKABLE_FOODS) {
+                        if (!cookable.isFish() && cookable.mobToKill.isInstance(entity)) {
+                            matched = cookable;
+                            break;
+                        }
+                    }
+                    if (matched == null) continue;
+                    double sqDistance = entity.squaredDistanceTo(mod.getPlayer());
+                    if (sqDistance > ANIMAL_SEARCH_RANGE * ANIMAL_SEARCH_RANGE) continue;
+                    int hungerPerformance = matched.getCookedUnits();
+                    double score = (double) 100 * hungerPerformance / (sqDistance + 1);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestEntity = entity;
+                        bestRawFood = matched.getRaw();
+                    }
+                }
+            }
+
             if (bestEntity != null) {
                 setDebugState("Killing " + bestEntity.getType().getTranslationKey());
                 currentResourceTask = killTaskOrNull(bestEntity, notBaby, bestRawFood);
