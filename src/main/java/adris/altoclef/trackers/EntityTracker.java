@@ -314,6 +314,14 @@ public class EntityTracker extends Tracker {
         return !entityBlacklist.unreachable(entity);
     }
 
+    /**
+     * Removes the given entity from the unreachable blacklist,
+     * allowing the entity tracker to target it again.
+     */
+    public void resetEntityBlacklist(Entity entity) {
+        entityBlacklist.resetItem(entity);
+    }
+
     @Override
     protected synchronized void updateState() {
         synchronized (BaritoneHelper.MINECRAFT_LOCK) {

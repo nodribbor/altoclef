@@ -3,6 +3,7 @@ package adris.altoclef.tasks.construction;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
+import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PlaceBlockTask;
 import adris.altoclef.tasks.container.StoreInContainerTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
@@ -178,8 +179,14 @@ public class StageSchematicResourcesTask extends Task {
         if (toolTask != null) {
             return toolTask;
         }
+
+        // 3. Ensure we carry a portable crafting table to avoid placing new ones everywhere
+        if (!AltoClef.getInstance().getItemStorage().hasItem(Items.CRAFTING_TABLE)) {
+            setDebugState("Getting portable crafting table...");
+            return getCraftingTableTask();
+        }
         
-        // 3. Get food LAST (now we have tools to hunt efficiently)
+        // 4. Get food LAST (now we have tools to hunt efficiently)
         if (StorageHelper.calculateInventoryFoodScore() < FOOD_UNITS) {
             setDebugState("Getting food (with tools)...");
             return new CollectFoodTask(FOOD_UNITS);
@@ -190,10 +197,24 @@ public class StageSchematicResourcesTask extends Task {
     }
     
     private Task determineRequiredTools() {
+        AltoClef mod = AltoClef.getInstance();
+
+        // Ensure we have a sword first for efficient food gathering and defense
+        if (!mod.getItemStorage().hasItem(Items.WOODEN_SWORD) &&
+            !mod.getItemStorage().hasItem(Items.STONE_SWORD) &&
+            !mod.getItemStorage().hasItem(Items.IRON_SWORD) &&
+            !mod.getItemStorage().hasItem(Items.DIAMOND_SWORD) &&
+            !mod.getItemStorage().hasItem(Items.NETHERITE_SWORD)) {
+            setDebugState("Getting sword for hunting...");
+            return TaskCatalogue.getItemTask(Items.STONE_SWORD, 1);
+        }
+
         // Analyze what we need to gather and get appropriate tools
         boolean needsStoneGathering = false;
         boolean needsWoodGathering = false;
         boolean needsOreGathering = false;
+        boolean needsDirtGathering = false;
+        boolean needsShearable = false;
         long stoneBlockCount = 0;
         
         for (MaterialStaging staging : materialStaging) {
@@ -215,9 +236,17 @@ public class StageSchematicResourcesTask extends Task {
             if (isOreBasedMaterial(item)) {
                 needsOreGathering = true;
             }
+
+            // Check for dirt/sand-type materials requiring a shovel
+            if (isShovelMaterial(item)) {
+                needsDirtGathering = true;
+            }
+
+            // Check for shearable materials
+            if (isShearableMaterial(item)) {
+                needsShearable = true;
+            }
         }
-        
-        AltoClef mod = AltoClef.getInstance();
         
         // If we need to gather a lot of stone (>500 blocks), get diamond pickaxe
         if (needsStoneGathering && stoneBlockCount > 500) {
@@ -254,8 +283,43 @@ public class StageSchematicResourcesTask extends Task {
                 return TaskCatalogue.getItemTask(Items.DIAMOND_PICKAXE, 1);
             }
         }
+
+        // For dirt/sand gathering, get a shovel
+        if (needsDirtGathering) {
+            if (!mod.getItemStorage().hasItem(Items.WOODEN_SHOVEL) &&
+                !mod.getItemStorage().hasItem(Items.STONE_SHOVEL) &&
+                !mod.getItemStorage().hasItem(Items.IRON_SHOVEL) &&
+                !mod.getItemStorage().hasItem(Items.DIAMOND_SHOVEL) &&
+                !mod.getItemStorage().hasItem(Items.NETHERITE_SHOVEL)) {
+                setDebugState("Getting shovel for dirt/sand gathering...");
+                return TaskCatalogue.getItemTask(Items.STONE_SHOVEL, 1);
+            }
+        }
+
+        // For shearable materials, get shears
+        if (needsShearable) {
+            if (!mod.getItemStorage().hasItem(Items.SHEARS)) {
+                setDebugState("Getting shears...");
+                return TaskCatalogue.getItemTask(Items.SHEARS, 1);
+            }
+        }
         
         return null;
+    }
+
+    private Task getCraftingTableTask() {
+        AltoClef mod = AltoClef.getInstance();
+
+        // Look for a nearby crafting table to pick up instead of crafting a new one
+        Optional<BlockPos> nearbyTable = mod.getBlockScanner().getNearestBlock(
+                mod.getPlayer().getPos(), WorldHelper::canBreak, Blocks.CRAFTING_TABLE);
+        if (nearbyTable.isPresent() &&
+                nearbyTable.get().isWithinDistance(mod.getPlayer().getPos(), 50)) {
+            return new DestroyBlockTask(nearbyTable.get());
+        }
+
+        // Otherwise craft a new one
+        return TaskCatalogue.getItemTask(Items.CRAFTING_TABLE, 1);
     }
     
     private boolean isStoneBasedMaterial(Item item) {
@@ -282,6 +346,36 @@ public class StageSchematicResourcesTask extends Task {
                || item == Items.COPPER_INGOT
                //#endif
                ;
+    }
+
+    private boolean isShovelMaterial(Item item) {
+        return item == Items.DIRT ||
+               item == Items.GRASS_BLOCK ||
+               item == Items.SAND ||
+               item == Items.RED_SAND ||
+               item == Items.GRAVEL ||
+               item == Items.CLAY ||
+               item == Items.SOUL_SAND ||
+               item == Items.SOUL_SOIL ||
+               item == Items.PODZOL ||
+               item == Items.MYCELIUM ||
+               item == Items.COARSE_DIRT;
+    }
+
+    private boolean isShearableMaterial(Item item) {
+        // Explicit checks for well-known shearable item types
+        if (item == Items.COBWEB) return true;
+        if (item == Items.WHITE_WOOL || item == Items.ORANGE_WOOL || item == Items.MAGENTA_WOOL ||
+            item == Items.LIGHT_BLUE_WOOL || item == Items.YELLOW_WOOL || item == Items.LIME_WOOL ||
+            item == Items.PINK_WOOL || item == Items.GRAY_WOOL || item == Items.LIGHT_GRAY_WOOL ||
+            item == Items.CYAN_WOOL || item == Items.PURPLE_WOOL || item == Items.BLUE_WOOL ||
+            item == Items.BROWN_WOOL || item == Items.GREEN_WOOL || item == Items.RED_WOOL ||
+            item == Items.BLACK_WOOL) return true;
+        if (item == Items.OAK_LEAVES || item == Items.SPRUCE_LEAVES || item == Items.BIRCH_LEAVES ||
+            item == Items.JUNGLE_LEAVES || item == Items.ACACIA_LEAVES || item == Items.DARK_OAK_LEAVES ||
+            item == Items.MANGROVE_LEAVES || item == Items.AZALEA_LEAVES ||
+            item == Items.FLOWERING_AZALEA_LEAVES) return true;
+        return false;
     }
     
     private Task handleChests() {

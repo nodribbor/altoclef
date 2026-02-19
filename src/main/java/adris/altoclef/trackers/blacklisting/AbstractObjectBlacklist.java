@@ -51,6 +51,10 @@ public abstract class AbstractObjectBlacklist<T> {
         return false;
     }
 
+    public void resetItem(T item) {
+        entries.remove(item);
+    }
+
     public void clear() {
         entries.clear();
     }
