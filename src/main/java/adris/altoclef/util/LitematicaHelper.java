@@ -57,7 +57,7 @@ public class LitematicaHelper {
      * Try loading modern Litematica packages (fi.dy.masa.*)
      */
     private static boolean tryLoadModernPackages() {
-        Debug.logInternal("Attempting to load modern Litematica packages (fi.dy.masa.*)...");
+        Debug.logMessage("Attempting to load modern Litematica packages (fi.dy.masa.*)...");
         
         boolean allSuccess = true;
         
@@ -98,9 +98,9 @@ public class LitematicaHelper {
         }
         
         if (allSuccess) {
-            Debug.logInternal("Modern package loading successful");
+            Debug.logMessage("Modern package loading successful");
         } else {
-            Debug.logInternal("Modern package loading failed - one or more classes not found");
+            Debug.logMessage("Modern package loading failed - one or more classes not found");
         }
         
         return allSuccess;
@@ -110,7 +110,7 @@ public class LitematicaHelper {
      * Try loading legacy Litematica packages (litematica.*)
      */
     private static boolean tryLoadLegacyPackages() {
-        Debug.logInternal("Attempting to load legacy Litematica packages (litematica.*)...");
+        Debug.logMessage("Attempting to load legacy Litematica packages (litematica.*)...");
         
         boolean allSuccess = true;
         
@@ -151,9 +151,9 @@ public class LitematicaHelper {
         }
         
         if (allSuccess) {
-            Debug.logInternal("Legacy package loading successful");
+            Debug.logMessage("Legacy package loading successful");
         } else {
-            Debug.logInternal("Legacy package loading failed - one or more classes not found");
+            Debug.logMessage("Legacy package loading failed - one or more classes not found");
         }
         
         return allSuccess;
@@ -165,10 +165,10 @@ public class LitematicaHelper {
     private static Class<?> loadClassWithLog(String className) throws ClassNotFoundException {
         try {
             Class<?> clazz = Class.forName(className);
-            Debug.logInternal("  ✓ Loaded: " + className);
+            Debug.logMessage("  ✓ Loaded: " + className);
             return clazz;
         } catch (ClassNotFoundException e) {
-            Debug.logInternal("  ✗ Failed: " + className + " - " + e.getMessage());
+            Debug.logMessage("  ✗ Failed: " + className + " - " + e.getMessage());
             throw e;
         }
     }
