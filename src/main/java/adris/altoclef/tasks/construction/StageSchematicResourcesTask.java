@@ -166,22 +166,23 @@ public class StageSchematicResourcesTask extends Task {
         
         setDebugState("Preparing tools and equipment...");
         
-        // Ensure we have food
-        if (StorageHelper.calculateInventoryFoodScore() < FOOD_UNITS) {
-            setDebugState("Getting food...");
-            return new CollectFoodTask(FOOD_UNITS);
-        }
-        
-        // Ensure we have a shield for defense
+        // 1. Get shield first for defense
         if (!AltoClef.getInstance().getItemStorage().hasItem(Items.SHIELD)) {
             setDebugState("Getting shield for defense...");
             return TaskCatalogue.getItemTask(Items.SHIELD, 1);
         }
         
-        // Check if we need advanced tools based on materials
+        // 2. Get necessary tools based on materials BEFORE food
+        // This makes food gathering much more efficient
         Task toolTask = determineRequiredTools();
         if (toolTask != null) {
             return toolTask;
+        }
+        
+        // 3. Get food LAST (now we have tools to hunt efficiently)
+        if (StorageHelper.calculateInventoryFoodScore() < FOOD_UNITS) {
+            setDebugState("Getting food (with tools)...");
+            return new CollectFoodTask(FOOD_UNITS);
         }
         
         preparationComplete = true;
