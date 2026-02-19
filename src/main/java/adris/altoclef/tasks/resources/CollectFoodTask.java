@@ -68,7 +68,7 @@ public class CollectFoodTask extends Task {
 
     private final double unitsNeeded;
     private final TimerGame checkNewOptionsTimer = new TimerGame(10);
-    private final SmeltInSmokerTask smeltTask = null;
+    private SmeltInSmokerTask smeltTask = null;
     private Task currentResourceTask = null;
 
     public CollectFoodTask(double unitsNeeded) {
@@ -189,17 +189,15 @@ public class CollectFoodTask extends Task {
                 return currentResourceTask;
             }
             // Convert raw foods -> cooked foods
-
-            /*for (CookableFoodTarget cookable : COOKABLE_FOODS) {
+            for (CookableFoodTarget cookable : COOKABLE_FOODS) {
                 int rawCount = mod.getItemStorage().getItemCount(cookable.getRaw());
                 if (rawCount > 0) {
-                    //Debug.logMessage("STARTING COOK OF " + cookable.getRaw().getTranslationKey());
                     int toSmelt = rawCount + mod.getItemStorage().getItemCount(cookable.getCooked());
                     smeltTask = new SmeltInSmokerTask(new SmeltTarget(new ItemTarget(cookable.cookedFood, toSmelt), new ItemTarget(cookable.rawFood, rawCount)));
                     smeltTask.ignoreMaterials();
                     return smeltTask;
                 }
-            }*/
+            }
         } else {
             // Pick up food items from ground
             for (Item item : ITEMS_TO_PICK_UP) {
