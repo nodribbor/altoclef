@@ -423,12 +423,12 @@ public class LitematicaHelper {
             ItemStack stack = (ItemStack) getStackMethod.invoke(entryObj);
             
             // Get total count
-            Method getTotalCountMethod = materialListEntryClass.getMethod("getTotalCount");
-            long totalCount = (long) getTotalCountMethod.invoke(entryObj);
+            Method getCountTotalMethod = materialListEntryClass.getMethod("getCountTotal");
+            long totalCount = (long) getCountTotalMethod.invoke(entryObj);
             
             // Get missing count
-            Method getMissingCountMethod = materialListEntryClass.getMethod("getMissingCount");
-            long missingCount = (long) getMissingCountMethod.invoke(entryObj);
+            Method getCountMissingMethod = materialListEntryClass.getMethod("getCountMissing");
+            long missingCount = (long) getCountMissingMethod.invoke(entryObj);
             
             return new MaterialRequirement(stack, totalCount, missingCount);
         } catch (Exception e) {
