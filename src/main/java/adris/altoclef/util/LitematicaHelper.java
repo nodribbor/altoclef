@@ -31,8 +31,8 @@ public class LitematicaHelper {
     private static Class<?> materialListBaseClass = null;
     private static Class<?> materialListEntryClass = null;
 
-    /** Maximum age (in milliseconds) of a material list file to be considered current (5 minutes). */
-    private static final long MAX_MATERIAL_FILE_AGE_MS = 5 * 60 * 1000;
+    /** Maximum age (in milliseconds) of a material list file to be considered current (1 hour). */
+    private static final long MAX_MATERIAL_FILE_AGE_MS = 60 * 60 * 1000;
     
     /**
      * Check if Litematica mod is loaded and available

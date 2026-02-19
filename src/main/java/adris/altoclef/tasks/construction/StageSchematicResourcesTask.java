@@ -39,6 +39,8 @@ public class StageSchematicResourcesTask extends Task {
     // In practice, many items have smaller stack sizes or don't stack at all
     private static final int ITEMS_PER_CHEST_OPTIMISTIC = 27 * 64; // 1728
     
+    private static final int MAX_CHEST_SEARCH_ATTEMPTS = 5;
+    private static final int CHEST_SEARCH_LOG_INTERVAL = 10;
     private final String placementName;
     private LitematicaHelper.SchematicPlacementInfo placementInfo;
     private List<MaterialStaging> materialStaging;
@@ -47,6 +49,7 @@ public class StageSchematicResourcesTask extends Task {
     private StagePhase currentPhase;
     private int currentMaterialIndex;
     private boolean preparationComplete;
+    private int chestSearchAttempts = 0;
     
     private enum StagePhase {
         INIT,
@@ -102,6 +105,7 @@ public class StageSchematicResourcesTask extends Task {
         currentPhase = StagePhase.INIT;
         currentMaterialIndex = 0;
         preparationComplete = false;
+        chestSearchAttempts = 0;
     }
     
     @Override
@@ -390,7 +394,19 @@ public class StageSchematicResourcesTask extends Task {
         BlockPos searchCenter = placementInfo.getOrigin();
         stagingChests = findNearbyChests(searchCenter, SEARCH_RADIUS);
         
-        Debug.logMessage("Found " + stagingChests.size() + " existing chests near build site");
+        // Only log every 10 attempts to avoid spam
+        if (chestSearchAttempts % CHEST_SEARCH_LOG_INTERVAL == 0) {
+            Debug.logMessage("Found " + stagingChests.size() + " existing chests near build site (attempt " + chestSearchAttempts + ")");
+        }
+        chestSearchAttempts++;
+        
+        // If we've tried too many times, proceed without chests
+        if (chestSearchAttempts > MAX_CHEST_SEARCH_ATTEMPTS && stagingChests.isEmpty()) {
+            Debug.logWarning("Could not find or place chests after " + chestSearchAttempts + " attempts. Proceeding anyway.");
+            chestSearchAttempts = 0;
+            currentPhase = StagePhase.GATHER_MATERIALS;
+            return null;
+        }
         
         // If we don't have enough chests, place some
         if (stagingChests.size() < MIN_CHEST_COUNT) {
@@ -411,10 +427,13 @@ public class StageSchematicResourcesTask extends Task {
                 BlockPos placePos = findChestPlacementLocation(searchCenter);
                 if (placePos != null) {
                     return new PlaceBlockTask(placePos, new Block[]{Blocks.CHEST}, false, false);
+                } else {
+                    Debug.logWarning("Could not find suitable location to place chest!");
                 }
             }
         }
         
+        chestSearchAttempts = 0;
         currentPhase = StagePhase.GATHER_MATERIALS;
         return null;
     }
