@@ -15,6 +15,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.LitematicaHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
+import adris.altoclef.util.time.TimerGame;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -24,7 +25,6 @@ import net.minecraft.item.Items;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Stages resources for a Litematica schematic by gathering required materials
@@ -42,6 +42,8 @@ public class StageSchematicResourcesTask extends Task {
     private static final double MIN_SCHEMATIC_CLEARANCE = 3.0;
     private static final int MIN_CHEST_DISTANCE = 2;
     private static final int MAX_CHEST_DISTANCE = 10;
+    private static final int MAX_DEPOSIT_ATTEMPTS = 3;
+    private static final double DEPOSIT_COOLDOWN_SECONDS = 2.0;
     private final String placementName;
     private LitematicaHelper.SchematicPlacementInfo placementInfo;
     private List<MaterialStaging> materialStaging;
@@ -51,6 +53,9 @@ public class StageSchematicResourcesTask extends Task {
     private int currentMaterialIndex;
     private boolean preparationComplete;
     private int chestSearchAttempts = 0;
+    private BlockPos currentDepositChest = null;
+    private int depositAttempts = 0;
+    private final TimerGame depositCooldown = new TimerGame(DEPOSIT_COOLDOWN_SECONDS);
     
     private enum StagePhase {
         INIT,
@@ -70,6 +75,7 @@ public class StageSchematicResourcesTask extends Task {
         long totalRequired;
         long alreadyStaged;
         long currentlyInInventory;
+        long pendingDepositAmount;
         boolean isGathered;
         
         MaterialStaging(ItemStack stack, long required) {
@@ -77,6 +83,7 @@ public class StageSchematicResourcesTask extends Task {
             this.totalRequired = required;
             this.alreadyStaged = 0;
             this.currentlyInInventory = 0;
+            this.pendingDepositAmount = 0;
             this.isGathered = false;
         }
         
@@ -108,6 +115,8 @@ public class StageSchematicResourcesTask extends Task {
         currentMaterialIndex = 0;
         preparationComplete = false;
         chestSearchAttempts = 0;
+        currentDepositChest = null;
+        depositAttempts = 0;
     }
     
     @Override
@@ -517,53 +526,91 @@ public class StageSchematicResourcesTask extends Task {
     }
     
     private Task handleDepositMaterials() {
+        AltoClef mod = AltoClef.getInstance();
+
+        // Read actual inventory state from the game
         updateInventoryCounts();
-        
-        // Find items we need to deposit
-        List<MaterialStaging> toDeposit = materialStaging.stream()
-            .filter(s -> s.currentlyInInventory > 0)
-            .collect(Collectors.toList());
-        
+
+        Debug.logMessage("=== DEPOSIT PHASE ===");
+        Debug.logMessage("Available chests: " + stagingChests.size());
+
+        // Find items that are actually in inventory (validate before depositing)
+        List<MaterialStaging> toDeposit = new ArrayList<>();
+        for (MaterialStaging staging : materialStaging) {
+            int actualCount = mod.getItemStorage().getItemCount(staging.itemStack.getItem());
+            if (actualCount > 0) {
+                staging.currentlyInInventory = actualCount;
+                toDeposit.add(staging);
+                Debug.logMessage("  " + staging.itemStack.getItem() + ": " + actualCount + " in inventory");
+            }
+        }
+
         if (toDeposit.isEmpty()) {
-            // Reset gathered flags and continue gathering
+            // Deposit completed — confirm alreadyStaged for any pending items
+            for (MaterialStaging staging : materialStaging) {
+                if (staging.pendingDepositAmount > 0) {
+                    staging.alreadyStaged += staging.pendingDepositAmount;
+                    staging.pendingDepositAmount = 0;
+                }
+            }
+            Debug.logMessage("Deposit completed successfully");
             materialStaging.forEach(s -> s.isGathered = false);
             currentPhase = StagePhase.GATHER_MATERIALS;
+            depositAttempts = 0;
+            currentDepositChest = null;
             return null;
         }
-        
-        // Find a chest to deposit into
+
+        // Check if we have valid chests
         if (stagingChests.isEmpty()) {
             Debug.logError("No staging chests available for deposit! Returning to chest placement phase.");
             currentPhase = StagePhase.FIND_OR_PLACE_CHESTS;
             chestSearchAttempts = 0;
             return null;
         }
-        
+
         BlockPos targetChest = findBestChestForDeposit();
         if (targetChest == null) {
             Debug.logWarning("Could not find suitable chest!");
             currentPhase = StagePhase.FIND_OR_PLACE_CHESTS;
             return null;
         }
-        
-        setDebugState("Depositing items into chest...");
-        
-        // Create item targets for what we want to deposit
+
+        // On chest change, reset attempt counter and enforce a brief cooldown
+        if (!targetChest.equals(currentDepositChest)) {
+            currentDepositChest = targetChest;
+            depositAttempts = 0;
+            depositCooldown.reset();
+        }
+
+        // If we've exceeded max attempts on this chest, move to the next one
+        if (depositAttempts > MAX_DEPOSIT_ATTEMPTS) {
+            // Only act after cooldown to avoid rapid chest cycling
+            if (depositCooldown.elapsed()) {
+                Debug.logWarning("Deposit failed after " + MAX_DEPOSIT_ATTEMPTS + " attempts, trying different chest");
+                stagingChests.remove(currentDepositChest);
+                currentDepositChest = null;
+                depositAttempts = 0;
+                if (stagingChests.isEmpty()) {
+                    Debug.logError("No more chests available!");
+                    currentPhase = StagePhase.FIND_OR_PLACE_CHESTS;
+                }
+            }
+            return null;
+        }
+
+        setDebugState("Depositing " + toDeposit.size() + " item type(s) into chest at " + targetChest.toShortString() + "...");
+
+        // Build deposit targets from validated inventory counts
         ItemTarget[] targets = toDeposit.stream()
             .map(s -> new ItemTarget(s.itemStack.getItem(), (int) s.currentlyInInventory))
             .toArray(ItemTarget[]::new);
-        
-        // Update staged counts after successful deposit
-        // (This will be tracked by the StoreInContainerTask)
-        toDeposit.forEach(s -> {
-            s.alreadyStaged += s.currentlyInInventory;
-            s.currentlyInInventory = 0;
-        });
-        
-        // Reset gathered flags
-        materialStaging.forEach(s -> s.isGathered = false);
-        currentPhase = StagePhase.GATHER_MATERIALS;
-        
+
+        // Record pending deposit amounts; alreadyStaged is updated only after confirmation
+        toDeposit.forEach(s -> s.pendingDepositAmount = s.currentlyInInventory);
+
+        // Keep currentPhase as DEPOSIT_MATERIALS — phase transitions when inventory is empty
+        // The task system's isEqual check ensures we don't restart the deposit task each tick
         return new StoreInContainerTask(targetChest, false, targets);
     }
     
@@ -715,25 +762,30 @@ public class StageSchematicResourcesTask extends Task {
         if (stagingChests.isEmpty()) {
             return null;
         }
-        
+
         AltoClef mod = AltoClef.getInstance();
         BlockPos playerPos = mod.getPlayer().getBlockPos();
-        
-        // Find the closest chest to the player that we haven't filled yet
-        // For now, we'll use a simple approach: try each chest in order of proximity
+
         BlockPos bestChest = null;
         double bestDistance = Double.MAX_VALUE;
-        
-        for (BlockPos chest : stagingChests) {
-            double distance = Math.sqrt(playerPos.getSquaredDistance(chest));
+
+        Iterator<BlockPos> it = stagingChests.iterator();
+        while (it.hasNext()) {
+            BlockPos chest = it.next();
+            // Skip chests that no longer exist in the world
+            Block block = mod.getWorld().getBlockState(chest).getBlock();
+            if (!block.equals(Blocks.CHEST) && !block.equals(Blocks.TRAPPED_CHEST)) {
+                Debug.logWarning("Chest at " + chest.toShortString() + " no longer exists, removing from list");
+                it.remove();
+                continue;
+            }
+            double distance = playerPos.getSquaredDistance(chest);
             if (distance < bestDistance) {
                 bestDistance = distance;
                 bestChest = chest;
             }
         }
-        
-        // TODO: Check if chest is full before selecting it
-        // For now, if deposit fails, the task will handle it
+
         return bestChest;
     }
     
