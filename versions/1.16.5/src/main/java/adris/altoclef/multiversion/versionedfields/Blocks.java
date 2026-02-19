@@ -47,6 +47,7 @@ public class Blocks {
     public static Block DEEPSLATE_LAPIS_ORE = UNSUPPORTED;
     public static Block POINTED_DRIPSTONE = UNSUPPORTED;
     public static Block SMALL_DRIPLEAF = UNSUPPORTED;
+    public static Block HANGING_ROOTS = UNSUPPORTED;
     public static Block COPPER_ORE = UNSUPPORTED;
     public static Block GLOW_LICHEN = UNSUPPORTED;
     public static Block DEEPSLATE_BRICKS = UNSUPPORTED;
