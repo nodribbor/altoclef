@@ -22,7 +22,6 @@ public class LitematicaHelper {
     private static Class<?> schematicPlacementClass = null;
     private static Class<?> materialListBaseClass = null;
     private static Class<?> materialListEntryClass = null;
-    private static Class<?> itemTypeClass = null;
     
     /**
      * Check if Litematica mod is loaded and available
@@ -91,12 +90,6 @@ public class LitematicaHelper {
             allSuccess = false;
         }
         
-        try {
-            itemTypeClass = loadClassWithLog("fi.dy.masa.malilib.util.data.ItemType");
-        } catch (ClassNotFoundException e) {
-            allSuccess = false;
-        }
-        
         if (allSuccess) {
             Debug.logMessage("Modern package loading successful");
         } else {
@@ -140,12 +133,6 @@ public class LitematicaHelper {
         
         try {
             materialListEntryClass = loadClassWithLog("litematica.materials.MaterialListEntry");
-        } catch (ClassNotFoundException e) {
-            allSuccess = false;
-        }
-        
-        try {
-            itemTypeClass = loadClassWithLog("malilib.util.data.ItemType");
         } catch (ClassNotFoundException e) {
             allSuccess = false;
         }
