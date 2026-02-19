@@ -32,34 +32,145 @@ public class LitematicaHelper {
             return litematicaAvailable;
         }
         
-        try {
-            // Try modern package structure first (MC 1.14+ / Litematica 0.0.0-dev.20190902+)
-            try {
-                dataManagerClass = Class.forName("fi.dy.masa.litematica.data.DataManager");
-                placementManagerClass = Class.forName("fi.dy.masa.litematica.schematic.placement.SchematicPlacementManager");
-                schematicPlacementClass = Class.forName("fi.dy.masa.litematica.schematic.placement.SchematicPlacement");
-                materialListBaseClass = Class.forName("fi.dy.masa.litematica.materials.MaterialListBase");
-                materialListEntryClass = Class.forName("fi.dy.masa.litematica.materials.MaterialListEntry");
-                itemTypeClass = Class.forName("fi.dy.masa.malilib.util.data.ItemType");
-                litematicaAvailable = true;
-                Debug.logMessage("Litematica integration enabled (modern version)");
-            } catch (ClassNotFoundException e) {
-                // Fall back to legacy package structure (MC 1.13.x and below)
-                dataManagerClass = Class.forName("litematica.data.DataManager");
-                placementManagerClass = Class.forName("litematica.schematic.placement.SchematicPlacementManager");
-                schematicPlacementClass = Class.forName("litematica.schematic.placement.SchematicPlacement");
-                materialListBaseClass = Class.forName("litematica.materials.MaterialListBase");
-                materialListEntryClass = Class.forName("litematica.materials.MaterialListEntry");
-                itemTypeClass = Class.forName("malilib.util.data.ItemType");
-                litematicaAvailable = true;
-                Debug.logMessage("Litematica integration enabled (legacy version)");
-            }
-        } catch (ClassNotFoundException e) {
-            litematicaAvailable = false;
-            Debug.logMessage("Litematica not found, schematic staging features disabled");
+        // Try modern packages first
+        boolean modernSuccess = tryLoadModernPackages();
+        if (modernSuccess) {
+            litematicaAvailable = true;
+            Debug.logMessage("Litematica integration enabled (modern version)");
+            return true;
         }
         
-        return litematicaAvailable;
+        // Try legacy packages
+        boolean legacySuccess = tryLoadLegacyPackages();
+        if (legacySuccess) {
+            litematicaAvailable = true;
+            Debug.logMessage("Litematica integration enabled (legacy version)");
+            return true;
+        }
+        
+        litematicaAvailable = false;
+        Debug.logWarning("Litematica not found - all class loading attempts failed");
+        return false;
+    }
+    
+    /**
+     * Try loading modern Litematica packages (fi.dy.masa.*)
+     */
+    private static boolean tryLoadModernPackages() {
+        Debug.logInternal("Attempting to load modern Litematica packages (fi.dy.masa.*)...");
+        
+        boolean allSuccess = true;
+        
+        try {
+            dataManagerClass = loadClassWithLog("fi.dy.masa.litematica.data.DataManager");
+        } catch (ClassNotFoundException e) {
+            allSuccess = false;
+        }
+        
+        try {
+            placementManagerClass = loadClassWithLog("fi.dy.masa.litematica.schematic.placement.SchematicPlacementManager");
+        } catch (ClassNotFoundException e) {
+            allSuccess = false;
+        }
+        
+        try {
+            schematicPlacementClass = loadClassWithLog("fi.dy.masa.litematica.schematic.placement.SchematicPlacement");
+        } catch (ClassNotFoundException e) {
+            allSuccess = false;
+        }
+        
+        try {
+            materialListBaseClass = loadClassWithLog("fi.dy.masa.litematica.materials.MaterialListBase");
+        } catch (ClassNotFoundException e) {
+            allSuccess = false;
+        }
+        
+        try {
+            materialListEntryClass = loadClassWithLog("fi.dy.masa.litematica.materials.MaterialListEntry");
+        } catch (ClassNotFoundException e) {
+            allSuccess = false;
+        }
+        
+        try {
+            itemTypeClass = loadClassWithLog("fi.dy.masa.malilib.util.data.ItemType");
+        } catch (ClassNotFoundException e) {
+            allSuccess = false;
+        }
+        
+        if (allSuccess) {
+            Debug.logInternal("Modern package loading successful");
+        } else {
+            Debug.logInternal("Modern package loading failed - one or more classes not found");
+        }
+        
+        return allSuccess;
+    }
+    
+    /**
+     * Try loading legacy Litematica packages (litematica.*)
+     */
+    private static boolean tryLoadLegacyPackages() {
+        Debug.logInternal("Attempting to load legacy Litematica packages (litematica.*)...");
+        
+        boolean allSuccess = true;
+        
+        try {
+            dataManagerClass = loadClassWithLog("litematica.data.DataManager");
+        } catch (ClassNotFoundException e) {
+            allSuccess = false;
+        }
+        
+        try {
+            placementManagerClass = loadClassWithLog("litematica.schematic.placement.SchematicPlacementManager");
+        } catch (ClassNotFoundException e) {
+            allSuccess = false;
+        }
+        
+        try {
+            schematicPlacementClass = loadClassWithLog("litematica.schematic.placement.SchematicPlacement");
+        } catch (ClassNotFoundException e) {
+            allSuccess = false;
+        }
+        
+        try {
+            materialListBaseClass = loadClassWithLog("litematica.materials.MaterialListBase");
+        } catch (ClassNotFoundException e) {
+            allSuccess = false;
+        }
+        
+        try {
+            materialListEntryClass = loadClassWithLog("litematica.materials.MaterialListEntry");
+        } catch (ClassNotFoundException e) {
+            allSuccess = false;
+        }
+        
+        try {
+            itemTypeClass = loadClassWithLog("malilib.util.data.ItemType");
+        } catch (ClassNotFoundException e) {
+            allSuccess = false;
+        }
+        
+        if (allSuccess) {
+            Debug.logInternal("Legacy package loading successful");
+        } else {
+            Debug.logInternal("Legacy package loading failed - one or more classes not found");
+        }
+        
+        return allSuccess;
+    }
+    
+    /**
+     * Load a class with detailed logging
+     */
+    private static Class<?> loadClassWithLog(String className) throws ClassNotFoundException {
+        try {
+            Class<?> clazz = Class.forName(className);
+            Debug.logInternal("  ✓ Loaded: " + className);
+            return clazz;
+        } catch (ClassNotFoundException e) {
+            Debug.logInternal("  ✗ Failed: " + className + " - " + e.getMessage());
+            throw e;
+        }
     }
     
     /**
