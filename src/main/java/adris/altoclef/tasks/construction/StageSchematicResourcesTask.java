@@ -16,6 +16,7 @@ import adris.altoclef.util.LitematicaHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -660,6 +661,11 @@ public class StageSchematicResourcesTask extends Task {
         return chestsNeeded;
     }
     
+    private boolean isLiquid(BlockState state) {
+        Block block = state.getBlock();
+        return block == Blocks.WATER || block == Blocks.LAVA || block == Blocks.BUBBLE_COLUMN;
+    }
+
     private BlockPos findChestPlacementLocation(BlockPos near) {
         AltoClef mod = AltoClef.getInstance();
 
@@ -680,7 +686,7 @@ public class StageSchematicResourcesTask extends Task {
 
                     if (WorldHelper.canPlace(pos) &&
                         WorldHelper.isSolidBlock(below) &&
-                        !mod.getWorld().getBlockState(below).isLiquid() &&
+                        !isLiquid(mod.getWorld().getBlockState(below)) &&
                         isOutsideSchematicBounds(pos)) {
                         return pos;
                     }
