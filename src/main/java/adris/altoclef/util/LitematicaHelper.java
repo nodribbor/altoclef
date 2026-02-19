@@ -308,7 +308,7 @@ public class LitematicaHelper {
             Object materialList = getMaterialListMethod.invoke(placementObj);
             
             // Get all materials from the list
-            Method getAllMaterialsMethod = materialListBaseClass.getMethod("getAllMaterials");
+            Method getAllMaterialsMethod = materialListBaseClass.getMethod("getMaterialsAll");
             Object materialsObj = getAllMaterialsMethod.invoke(materialList);
             
             // Convert ImmutableList to List
