@@ -303,18 +303,98 @@ public class LitematicaHelper {
 
             BlockPos origin = new BlockPos(x, y, z);
             
-            // Get material list
+            // Get material list from placement
             Method getMaterialListMethod = schematicPlacementClass.getMethod("getMaterialList");
             Object materialList = getMaterialListMethod.invoke(placementObj);
-            
-            // Get all materials from the list
-            // Use getMaterialsFiltered(true) instead of getMaterialsAll() because
-            // materialListAll may be empty even after generating the material list in Litematica's GUI.
-            // The 'true' parameter forces a refresh of the filtered list.
-            Method getMaterialsFilteredMethod = materialListBaseClass.getMethod("getMaterialsFiltered", boolean.class);
-            Object materialsObj = getMaterialsFilteredMethod.invoke(materialList, true);
-            
-            // Iterate over returned materials list
+
+            if (materialList == null) {
+                Debug.logWarning("Material list is null for placement: " + name);
+                return Optional.empty();
+            }
+
+            // Force regeneration of the material list
+            Debug.logMessage("Attempting to regenerate material list...");
+            try {
+                Method reCreateMethod = materialListBaseClass.getMethod("reCreateMaterialList");
+                reCreateMethod.invoke(materialList);
+                Debug.logMessage("Called reCreateMaterialList() successfully");
+
+                // Small delay to let async operations complete (if any)
+                Thread.sleep(100);
+            } catch (Exception e) {
+                Debug.logWarning("Could not call reCreateMaterialList(): " + e.getMessage());
+            }
+
+            // Try multiple methods to get materials, with debug logging
+            Object materialsObj = null;
+            int materialCount = 0;
+
+            // Method 1: Try getMaterialsFiltered(true)
+            try {
+                Debug.logMessage("Trying getMaterialsFiltered(true)...");
+                Method getFilteredMethod = materialListBaseClass.getMethod("getMaterialsFiltered", boolean.class);
+                materialsObj = getFilteredMethod.invoke(materialList, true);
+
+                if (materialsObj instanceof Iterable) {
+                    int count = 0;
+                    for (Object item : (Iterable<?>) materialsObj) {
+                        count++;
+                    }
+                    materialCount = count;
+                    Debug.logMessage("getMaterialsFiltered(true) returned " + materialCount + " entries");
+                }
+            } catch (Exception e) {
+                Debug.logWarning("getMaterialsFiltered(true) failed: " + e.getMessage());
+            }
+
+            // Method 2: If empty, try getMaterialsAll()
+            if (materialCount == 0) {
+                try {
+                    Debug.logMessage("Trying getMaterialsAll()...");
+                    Method getAllMethod = materialListBaseClass.getMethod("getMaterialsAll");
+                    materialsObj = getAllMethod.invoke(materialList);
+
+                    if (materialsObj instanceof Iterable) {
+                        int count = 0;
+                        for (Object item : (Iterable<?>) materialsObj) {
+                            count++;
+                        }
+                        materialCount = count;
+                        Debug.logMessage("getMaterialsAll() returned " + materialCount + " entries");
+                    }
+                } catch (Exception e) {
+                    Debug.logWarning("getMaterialsAll() failed: " + e.getMessage());
+                }
+            }
+
+            // Method 3: If still empty, try getMaterialsMissingOnly(true)
+            if (materialCount == 0) {
+                try {
+                    Debug.logMessage("Trying getMaterialsMissingOnly(true)...");
+                    Method getMissingMethod = materialListBaseClass.getMethod("getMaterialsMissingOnly", boolean.class);
+                    materialsObj = getMissingMethod.invoke(materialList, true);
+
+                    if (materialsObj instanceof Iterable) {
+                        int count = 0;
+                        for (Object item : (Iterable<?>) materialsObj) {
+                            count++;
+                        }
+                        materialCount = count;
+                        Debug.logMessage("getMaterialsMissingOnly(true) returned " + materialCount + " entries");
+                    }
+                } catch (Exception e) {
+                    Debug.logWarning("getMaterialsMissingOnly(true) failed: " + e.getMessage());
+                }
+            }
+
+            Debug.logMessage("Final material count: " + materialCount);
+
+            if (materialCount == 0) {
+                Debug.logWarning("All methods returned 0 materials. The material list may not be generated yet.");
+                Debug.logWarning("Please ensure you've opened the material list in Litematica's GUI first.");
+            }
+
+            // Convert materialsObj to List<MaterialRequirement>
             List<MaterialRequirement> materials = new ArrayList<>();
             if (materialsObj instanceof Iterable) {
                 for (Object entryObj : (Iterable<?>) materialsObj) {
