@@ -271,15 +271,36 @@ public class LitematicaHelper {
             
             // Get placement origin
             Method getOriginMethod = schematicPlacementClass.getMethod("getOrigin");
-            Object malilibBlockPos = getOriginMethod.invoke(placementObj);
-            
-            // Convert malilib BlockPos to Minecraft BlockPos
-            Method getXMethod = malilibBlockPos.getClass().getMethod("getX");
-            Method getYMethod = malilibBlockPos.getClass().getMethod("getY");
-            Method getZMethod = malilibBlockPos.getClass().getMethod("getZ");
-            int x = (int) getXMethod.invoke(malilibBlockPos);
-            int y = (int) getYMethod.invoke(malilibBlockPos);
-            int z = (int) getZMethod.invoke(malilibBlockPos);
+            Object originObj = getOriginMethod.invoke(placementObj);
+
+            // Extract coordinates - handle both malilib and vanilla BlockPos
+            int x, y, z;
+
+            if (originObj.getClass().getName().startsWith("fi.dy.masa.malilib")) {
+                // Malilib BlockPos - has getX(), getY(), getZ()
+                try {
+                    Method getXMethod = originObj.getClass().getMethod("getX");
+                    Method getYMethod = originObj.getClass().getMethod("getY");
+                    Method getZMethod = originObj.getClass().getMethod("getZ");
+                    x = (int) getXMethod.invoke(originObj);
+                    y = (int) getYMethod.invoke(originObj);
+                    z = (int) getZMethod.invoke(originObj);
+                } catch (NoSuchMethodException e) {
+                    // Fallback: try as vanilla BlockPos
+                    net.minecraft.core.BlockPos pos = (net.minecraft.core.BlockPos) originObj;
+                    x = pos.getX();
+                    y = pos.getY();
+                    z = pos.getZ();
+                }
+            } else {
+                // Vanilla Minecraft BlockPos
+                // In Fabric environment, these methods ARE available
+                net.minecraft.core.BlockPos pos = (net.minecraft.core.BlockPos) originObj;
+                x = pos.getX();
+                y = pos.getY();
+                z = pos.getZ();
+            }
+
             BlockPos origin = new BlockPos(x, y, z);
             
             // Get material list
