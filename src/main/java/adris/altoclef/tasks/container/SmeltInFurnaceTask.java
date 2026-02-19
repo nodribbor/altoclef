@@ -347,7 +347,7 @@ public class SmeltInFurnaceTask extends ResourceTask {
             }
             if (mod.getItemStorage().getItemCount(Items.COBBLESTONE) > 8) {
                 double cost = 100.0 - 90.0 * (double) mod.getItemStorage().getItemCount(new Item[]{Items.COBBLESTONE}) / 8.0;
-                return Math.max(cost, 10.0);
+                return Math.max(cost, 64.0);
             }
             return StorageHelper.miningRequirementMetInventory(MiningRequirement.WOOD) ? 50.0 : 100.0;
         }

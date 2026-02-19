@@ -79,12 +79,6 @@ public class CollectFoodTask extends Task {
         if (food == null) return 0;
         int count = food.getCount();
         if (count <= 0) return 0;
-        for (CookableFoodTarget cookable : COOKABLE_FOODS) {
-            if (food.getItem() == cookable.getRaw()) {
-                assert ItemVer.getFoodComponent(cookable.getCooked()) != null;
-                return count * ItemVer.getFoodComponent(cookable.getCooked()).getHunger();
-            }
-        }
 
         //bread logic
         assert ItemVer.getFoodComponent( Items.BREAD) != null;
