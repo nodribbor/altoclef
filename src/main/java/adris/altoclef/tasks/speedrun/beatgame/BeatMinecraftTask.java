@@ -194,7 +194,7 @@ public class BeatMinecraftTask extends Task {
         ));
 
         gatherResources.add(new CraftItemPriorityTask(200, getRecipeTarget(Items.SHIELD),
-                a -> itemStorage.hasItem(Items.IRON_INGOT)
+                a -> itemStorage.hasItem(Items.IRON_INGOT) && !BeatMinecraftTask.hasItem(a, Items.SHIELD)
         ));
 
         gatherResources.add(new CraftItemPriorityTask(300, mod.getCraftingRecipeTracker().getFirstRecipeTarget(Items.BUCKET, 2),
