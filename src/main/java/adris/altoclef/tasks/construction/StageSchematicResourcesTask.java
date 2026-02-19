@@ -6,6 +6,7 @@ import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PlaceBlockTask;
 import adris.altoclef.tasks.container.StoreInContainerTask;
+import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasks.resources.CollectFoodTask;
@@ -171,6 +172,11 @@ public class StageSchematicResourcesTask extends Task {
         if (!AltoClef.getInstance().getItemStorage().hasItem(Items.SHIELD)) {
             setDebugState("Getting shield for defense...");
             return TaskCatalogue.getItemTask(Items.SHIELD, 1);
+        }
+        // Equip shield to offhand if not already there
+        if (!StorageHelper.isArmorEquipped(Items.SHIELD)) {
+            setDebugState("Equipping shield to offhand...");
+            return new EquipArmorTask(Items.SHIELD);
         }
         
         // 2. Get necessary tools based on materials BEFORE food
