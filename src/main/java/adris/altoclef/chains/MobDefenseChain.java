@@ -52,6 +52,8 @@ public class MobDefenseChain extends SingleTaskChain {
     private static final double ARROW_KEEP_DISTANCE_HORIZONTAL = 2;
     private static final double ARROW_KEEP_DISTANCE_VERTICAL = 10;
     private static final double SAFE_KEEP_DISTANCE = 8;
+    private static final float RETREAT_HEALTH_THRESHOLD = 12;
+    private static final float FLEE_DANGEROUS_MOB_HEALTH_THRESHOLD = 14;
     private static final List<Class<? extends Entity>> ignoredMobs = List.of(Entities.WARDEN, WitherEntity.class, EndermanEntity.class, BlazeEntity.class,
             WitherSkeletonEntity.class, HoglinEntity.class, ZoglinEntity.class, PiglinBruteEntity.class, VindicatorEntity.class, MagmaCubeEntity.class);
 
@@ -184,7 +186,7 @@ public class MobDefenseChain extends SingleTaskChain {
 
         // Run away if a weird mob is close by.
         Optional<Entity> universallyDangerous = getUniversallyDangerousMob(mod);
-        if (universallyDangerous.isPresent() && mod.getPlayer().getHealth() <= 10) {
+        if (universallyDangerous.isPresent() && mod.getPlayer().getHealth() <= FLEE_DANGEROUS_MOB_HEALTH_THRESHOLD) {
             runAwayTask = new RunAwayFromHostilesTask(DANGER_KEEP_DISTANCE, true);
             setTask(runAwayTask);
             return 70;
@@ -247,7 +249,7 @@ public class MobDefenseChain extends SingleTaskChain {
         doForceField(mod);
 
         // Dodge projectiles
-        if (mod.getPlayer().getHealth() <= 10 && !hasShield(mod)) {
+        if (mod.getPlayer().getHealth() <= RETREAT_HEALTH_THRESHOLD && !hasShield(mod)) {
 
             if (StorageHelper.getNumberOfThrowawayBlocks(mod) > 0 && !mod.getFoodChain().needsToEat()
                     && mod.getModSettings().isDodgeProjectiles() && isProjectileClose(mod)) {
@@ -571,7 +573,7 @@ public class MobDefenseChain extends SingleTaskChain {
         boolean witchNearby = mod.getEntityTracker().entityFound(WitchEntity.class);
 
         float health = mod.getPlayer().getHealth();
-        if (health <= 10 && !witchNearby) {
+        if (health <= RETREAT_HEALTH_THRESHOLD && !witchNearby) {
             return true;
         }
         if (mod.getPlayer().hasStatusEffect(StatusEffects.WITHER) ||

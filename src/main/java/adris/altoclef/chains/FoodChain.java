@@ -26,6 +26,8 @@ import java.util.Optional;
 
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 public class FoodChain extends SingleTaskChain {
+    private static final float CRITICAL_HEALTH_THRESHOLD = 6;
+    private static final float EAT_WHEN_HEALTH_BELOW = 15;
     private static FoodChainConfig config;
     private static boolean hasFood;
 
@@ -130,9 +132,11 @@ public class FoodChain extends SingleTaskChain {
             - We're very low on health and are even slightly hungry
         - We're kind of hungry and have food that fits perfectly
          */
+        // Check if we're in a panic/critical health situation - override shouldStop
+        boolean inCriticalHealth = mod.getPlayer().getHealth() <= CRITICAL_HEALTH_THRESHOLD;
         // We're in danger, don't eat now!!
         if (!mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isFalling(mod) ||
-                mod.getPlayer().isBlocking() || shouldStop) {
+                mod.getPlayer().isBlocking() || (shouldStop && !inCriticalHealth)) {
             stopEat();
             return Float.NEGATIVE_INFINITY;
         }
@@ -211,22 +215,25 @@ public class FoodChain extends SingleTaskChain {
     }
 
     public boolean needsToEat() {
-        if (!hasFood() || shouldStop) {
+        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        if (player == null) return false;
+
+        float health = player.getHealth();
+        boolean inCriticalHealth = health <= CRITICAL_HEALTH_THRESHOLD;
+
+        // In critical health, bypass shouldStop
+        if (!hasFood() || (shouldStop && !inCriticalHealth)) {
             return false;
         }
 
-
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
-        assert player != null;
         int foodLevel = player.getHungerManager().getFoodLevel();
-        float health = player.getHealth();
 
         if (foodLevel >= 20) {
             // We can't eat.
             return false;
         }
 
-        if (health <= 10) {
+        if (health <= EAT_WHEN_HEALTH_BELOW) {
             return true;
         }
         //Debug.logMessage("FOOD: " + foodLevel + " -- HEALTH: " + health);
@@ -313,7 +320,9 @@ public class FoodChain extends SingleTaskChain {
 
     // If we need to eat like, NOW.
     public boolean needsToEatCritical() {
-        return false;
+        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        if (player == null) return false;
+        return hasFood() && player.getHealth() <= CRITICAL_HEALTH_THRESHOLD && player.getHungerManager().getFoodLevel() < 20;
     }
 
     public boolean hasFood() {
