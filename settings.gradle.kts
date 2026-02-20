@@ -35,10 +35,13 @@ listOf(
     "1.17.1",
     "1.16.5"
 ).forEach { version ->
-    include(":$version")
-    project(":$version").apply {
-        projectDir = file("versions/$version")
-        buildFileName = "../../build.gradle"
-        name = version
+    val versionDir = file("versions/$version")
+    if (versionDir.exists()) {
+        include(":$version")
+        project(":$version").apply {
+            projectDir = versionDir
+            buildFileName = "../../build.gradle"
+            name = version
+        }
     }
 }

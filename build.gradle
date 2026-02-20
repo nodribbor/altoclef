@@ -23,8 +23,10 @@ preprocess {
     patternAnnotation.set("adris.altoclef.multiversion.Pattern")
 }
 
-sourceCompatibility = JavaVersion.VERSION_21
-targetCompatibility = sourceCompatibility
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
 
 
 
@@ -32,7 +34,9 @@ tasks.withType(JavaCompile).configureEach {
     options.release = 21
 }
 
-archivesBaseName = project.archives_base_name
+base {
+    archivesName = project.archives_base_name
+}
 version = "${project.name}-${project.mod_version}"
 group = project.maven_group
 
@@ -126,13 +130,18 @@ dependencies {
     shadow('com.fasterxml.jackson.core:jackson-databind:2.16.0')
 
     // Thank you georgeagostino for fixing my garbage
+    def baritoneVersion = project.name
+    // Use 1.21.1 Baritone for 1.21.11 since a dedicated build may not exist yet
+    if (mcVersion == 12111) {
+        baritoneVersion = "1.21.1"
+    }
     if (getProject().hasProperty("altoclef.development")) {
         // Must run build from baritone-plus once
-        modImplementation "baritone-api-fabric:baritone-unoptimized-fabric-${project.name}"
-        include "baritone-api-fabric:baritone-unoptimized-fabric-${project.name}"
+        modImplementation "baritone-api-fabric:baritone-unoptimized-fabric-${baritoneVersion}"
+        include "baritone-api-fabric:baritone-unoptimized-fabric-${baritoneVersion}"
     } else {
-        modImplementation "cabaletta:baritone-unoptimized-fabric:${project.name}"
-        include "cabaletta:baritone-unoptimized-fabric:${project.name}"
+        modImplementation "cabaletta:baritone-unoptimized-fabric:${baritoneVersion}"
+        include "cabaletta:baritone-unoptimized-fabric:${baritoneVersion}"
     }
     //modImplementation 'baritone-api-fabric:baritone-api-fabric:1.6.3'
     //implementation files('baritone-plus/build/libs/baritone-unoptimized-fabric-1.6.3.jar')
@@ -153,7 +162,7 @@ downgradeJar {
 
 tasks.register('replaceJar') {
     // do not downgrade java version if we do not need to
-    if (getJavaVersion() == targetCompatibility) {
+    if (getJavaVersion() == java.targetCompatibility) {
         return
     }
 
