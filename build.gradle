@@ -130,18 +130,18 @@ dependencies {
     shadow('com.fasterxml.jackson.core:jackson-databind:2.16.0')
 
     // Thank you georgeagostino for fixing my garbage
-    def baritoneVersion = project.name
+    def baritoneMinecraftVersion = project.name
     // Use 1.21.1 Baritone for 1.21.11 since a dedicated build may not exist yet
     if (mcVersion == 12111) {
-        baritoneVersion = "1.21.1"
+        baritoneMinecraftVersion = "1.21.1"
     }
     if (getProject().hasProperty("altoclef.development")) {
         // Must run build from baritone-plus once
-        modImplementation "baritone-api-fabric:baritone-unoptimized-fabric-${baritoneVersion}"
-        include "baritone-api-fabric:baritone-unoptimized-fabric-${baritoneVersion}"
+        modImplementation "baritone-api-fabric:baritone-unoptimized-fabric-${baritoneMinecraftVersion}"
+        include "baritone-api-fabric:baritone-unoptimized-fabric-${baritoneMinecraftVersion}"
     } else {
-        modImplementation "cabaletta:baritone-unoptimized-fabric:${baritoneVersion}"
-        include "cabaletta:baritone-unoptimized-fabric:${baritoneVersion}"
+        modImplementation "cabaletta:baritone-unoptimized-fabric:${baritoneMinecraftVersion}"
+        include "cabaletta:baritone-unoptimized-fabric:${baritoneMinecraftVersion}"
     }
     //modImplementation 'baritone-api-fabric:baritone-api-fabric:1.6.3'
     //implementation files('baritone-plus/build/libs/baritone-unoptimized-fabric-1.6.3.jar')
