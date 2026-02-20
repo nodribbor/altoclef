@@ -12,6 +12,7 @@ import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.LitematicaHelper;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
@@ -19,6 +20,7 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.inventory.Inventory;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -26,6 +28,7 @@ import net.minecraft.item.Items;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Stages resources for a Litematica schematic by gathering required materials
@@ -49,6 +52,19 @@ public class StageSchematicResourcesTask extends Task {
     private static final double MIN_CHEST_SPACING = 1.5;
     private static final int PLACEMENT_WANDER_THRESHOLD = 10;
     private static final double PROGRESS_REPORT_INTERVAL_SECONDS = 30.0;
+    private static final int COBBLESTONE_FOR_PREP = 12;  // furnace (8) + extra (4)
+    private static final int WOOD_BUFFER_LOGS = 3;        // extra logs for crafting table/sticks
+    private static final int IRON_ORE_BUFFER = 2;         // extra iron for waste/anvil
+    private static final int COAL_BUFFER = 5;             // extra coal for fuel
+    private static final double DANGER_DETECTION_RADIUS_SQ = 64;  // 8 block radius
+    private static final int DANGER_HOSTILE_THRESHOLD = 5;
+    private static final float DANGER_HEALTH_THRESHOLD = 10.0f;   // 5 hearts
+    private static final double SAFE_LOCATION_RADIUS_SQ = 100;    // 10 block radius
+    private static final int SAFE_LOCATION_MAX_MOBS = 2;
+    private static final int SAFE_SEARCH_MIN_DIST = 20;
+    private static final int SAFE_SEARCH_MAX_DIST = 50;
+    private static final int SAFE_SEARCH_DIST_STEP = 10;
+    private static final int SAFE_SEARCH_ANGLE_STEP = 45;
     private final String placementName;
     private LitematicaHelper.SchematicPlacementInfo placementInfo;
     private List<MaterialStaging> materialStaging;
@@ -66,6 +82,10 @@ public class StageSchematicResourcesTask extends Task {
     private BlockPos permanentCraftingTablePos = null;
     private boolean hasPlacedCraftingTable = false;
     private final TimerGame progressReportTimer = new TimerGame(PROGRESS_REPORT_INTERVAL_SECONDS);
+    private PrepPhase currentPrepPhase = PrepPhase.CALCULATE_NEEDS;
+    private ToolRequirements toolReqs = null;
+    private final TimerGame dangerCheckTimer = new TimerGame(2);
+    private boolean inDanger = false;
     
     private enum StagePhase {
         INIT,
@@ -75,6 +95,31 @@ public class StageSchematicResourcesTask extends Task {
         GATHER_MATERIALS,
         DEPOSIT_MATERIALS,
         COMPLETE
+    }
+
+    private enum PrepPhase {
+        CALCULATE_NEEDS,
+        GATHER_WOOD,
+        GATHER_STONE,
+        MINE_IRON_AND_COAL,
+        SMELT_IRON,
+        CRAFT_ALL_TOOLS,
+        COMPLETE
+    }
+
+    private static class ToolRequirements {
+        int woodNeeded = 0;
+        int ironNeeded = 0;
+
+        void addShield()      { woodNeeded += 6; ironNeeded += 1; }
+        void addIronPickaxe() { woodNeeded += 2; ironNeeded += 3; }
+        void addIronAxe()     { woodNeeded += 2; ironNeeded += 3; }
+        void addIronSword()   { woodNeeded += 1; ironNeeded += 2; }
+        void addWaterBucket() { ironNeeded += 3; }
+
+        int getLogsNeeded()    { return (int) Math.ceil(woodNeeded / 4.0) + WOOD_BUFFER_LOGS; }
+        int getIronOreNeeded() { return ironNeeded + IRON_ORE_BUFFER; }
+        int getCoalNeeded()    { return ironNeeded + COAL_BUFFER; }
     }
     
     /**
@@ -136,6 +181,9 @@ public class StageSchematicResourcesTask extends Task {
         attemptedChestPlacements.clear();
         permanentCraftingTablePos = null;
         hasPlacedCraftingTable = false;
+        currentPrepPhase = PrepPhase.CALCULATE_NEEDS;
+        toolReqs = null;
+        inDanger = false;
 
         // Protect the designated crafting table and staging chests from being broken
         mod.getBehaviour().push();
@@ -158,6 +206,24 @@ public class StageSchematicResourcesTask extends Task {
         if (!LitematicaHelper.isLitematicaLoaded()) {
             Debug.logError("Litematica mod is not loaded! Cannot stage schematic resources.");
             return null;
+        }
+
+        // Danger check every 2 seconds
+        AltoClef mod = AltoClef.getInstance();
+        if (dangerCheckTimer.elapsed()) {
+            dangerCheckTimer.reset();
+            boolean dangerous = isDangerous(mod);
+            if (dangerous && !inDanger) {
+                Debug.logWarning("DANGER detected! Retreating to safety...");
+                inDanger = true;
+            } else if (!dangerous && inDanger) {
+                Debug.logMessage("✓ Safe now, resuming task");
+                inDanger = false;
+            }
+        }
+        if (inDanger) {
+            Task dangerTask = handleDanger(mod);
+            if (dangerTask != null) return dangerTask;
         }
 
         // Periodic progress report
@@ -232,44 +298,215 @@ public class StageSchematicResourcesTask extends Task {
             currentPhase = StagePhase.FIND_OR_PLACE_CHESTS;
             return null;
         }
-        
-        setDebugState("Preparing tools and equipment...");
 
-        // 1. Ensure a permanent crafting table is available before crafting tools
-        Task tableTask = ensureCraftingTableAvailable();
-        if (tableTask != null) {
-            setDebugState("Setting up crafting table...");
-            return tableTask;
+        AltoClef mod = AltoClef.getInstance();
+
+        switch (currentPrepPhase) {
+            case CALCULATE_NEEDS: {
+                toolReqs = calculateToolRequirements(mod);
+                currentPrepPhase = PrepPhase.GATHER_WOOD;
+                return null;
+            }
+            case GATHER_WOOD: {
+                int logsNeeded = toolReqs.getLogsNeeded();
+                int logsHave = mod.getItemStorage().getItemCount(ItemHelper.LOG);
+                if (logsHave < logsNeeded) {
+                    setDebugState("Gathering wood: " + logsHave + "/" + logsNeeded + " logs");
+                    return TaskCatalogue.getItemTask(Items.OAK_LOG, logsNeeded);
+                }
+                Debug.logMessage("✓ Wood gathered: " + logsHave + " logs");
+                currentPrepPhase = PrepPhase.GATHER_STONE;
+                return null;
+            }
+            case GATHER_STONE: {
+                int cobbleNeeded = COBBLESTONE_FOR_PREP;
+                int cobbleHave = mod.getItemStorage().getItemCount(Items.COBBLESTONE);
+                if (cobbleHave < cobbleNeeded) {
+                    setDebugState("Mining stone: " + cobbleHave + "/" + cobbleNeeded);
+                    return TaskCatalogue.getItemTask(Items.COBBLESTONE, cobbleNeeded);
+                }
+                Debug.logMessage("✓ Stone gathered: " + cobbleHave + " cobblestone");
+                currentPrepPhase = PrepPhase.MINE_IRON_AND_COAL;
+                return null;
+            }
+            case MINE_IRON_AND_COAL: {
+                int ironNeeded = toolReqs.getIronOreNeeded();
+                int coalNeeded = toolReqs.getCoalNeeded();
+                int ironHave = mod.getItemStorage().getItemCount(Items.RAW_IRON)
+                        + mod.getItemStorage().getItemCount(Items.IRON_INGOT);
+                int coalHave = mod.getItemStorage().getItemCount(Items.COAL);
+                if (ironHave < ironNeeded) {
+                    setDebugState("Mining iron ore: " + ironHave + "/" + ironNeeded);
+                    return TaskCatalogue.getItemTask(Items.RAW_IRON, ironNeeded);
+                }
+                if (coalHave < coalNeeded) {
+                    setDebugState("Mining coal: " + coalHave + "/" + coalNeeded);
+                    return TaskCatalogue.getItemTask(Items.COAL, coalNeeded);
+                }
+                Debug.logMessage("✓ Iron gathered: " + ironHave + ", Coal: " + coalHave);
+                currentPrepPhase = PrepPhase.SMELT_IRON;
+                return null;
+            }
+            case SMELT_IRON: {
+                int ingotNeeded = toolReqs.ironNeeded;
+                int ingotHave = mod.getItemStorage().getItemCount(Items.IRON_INGOT);
+                if (ingotHave < ingotNeeded) {
+                    setDebugState("Smelting iron: " + ingotHave + "/" + ingotNeeded + " ingots");
+                    return TaskCatalogue.getItemTask(Items.IRON_INGOT, ingotNeeded);
+                }
+                Debug.logMessage("✓ Iron ingots ready: " + ingotHave);
+                currentPrepPhase = PrepPhase.CRAFT_ALL_TOOLS;
+                return null;
+            }
+            case CRAFT_ALL_TOOLS: {
+                // Ensure crafting table
+                Task tableTask = ensureCraftingTableAvailable();
+                if (tableTask != null) {
+                    setDebugState("Setting up crafting table...");
+                    return tableTask;
+                }
+
+                // 1. Water bucket (highest priority for safety)
+                if (!mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
+                    setDebugState("Getting water bucket...");
+                    return TaskCatalogue.getItemTask(Items.WATER_BUCKET, 1);
+                }
+
+                // 2. Shield
+                if (!hasShieldEquipped(mod)) {
+                    setDebugState("Getting shield for defense...");
+                    return TaskCatalogue.getItemTask(Items.SHIELD, 1);
+                }
+                if (!StorageHelper.isArmorEquipped(Items.SHIELD)) {
+                    setDebugState("Equipping shield to offhand...");
+                    return new EquipArmorTask(Items.SHIELD);
+                }
+
+                // 3. Sword
+                if (!hasIronSword(mod)) {
+                    setDebugState("Getting iron sword...");
+                    return TaskCatalogue.getItemTask(Items.IRON_SWORD, 1);
+                }
+
+                // 4. Material-specific tools
+                Task toolTask = determineRequiredTools();
+                if (toolTask != null) return toolTask;
+
+                // 5. Food
+                if (StorageHelper.calculateInventoryFoodScore() < FOOD_UNITS) {
+                    setDebugState("Getting food (with tools)...");
+                    return new CollectFoodTask(FOOD_UNITS);
+                }
+
+                Debug.logMessage("========================================");
+                Debug.logMessage("✓✓✓ ALL TOOLS PREPARED ✓✓✓");
+                Debug.logMessage("  ✓ Water bucket");
+                Debug.logMessage("  ✓ Shield");
+                Debug.logMessage("  ✓ Sword");
+                Debug.logMessage("  ✓ Tools");
+                Debug.logMessage("========================================");
+                currentPrepPhase = PrepPhase.COMPLETE;
+                return null;
+            }
+            case COMPLETE:
+            default:
+                preparationComplete = true;
+                return null;
         }
-        
-        // 2. Get shield first for defense
-        if (!AltoClef.getInstance().getItemStorage().hasItem(Items.SHIELD)) {
-            setDebugState("Getting shield for defense...");
-            return TaskCatalogue.getItemTask(Items.SHIELD, 1);
+    }
+
+    private boolean hasShieldEquipped(AltoClef mod) {
+        // Check offhand slot first
+        if (StorageHelper.isArmorEquipped(Items.SHIELD)) {
+            return true;
         }
-        // Equip shield to offhand if not already there
-        if (!StorageHelper.isArmorEquipped(Items.SHIELD)) {
-            setDebugState("Equipping shield to offhand...");
+        // Then check inventory
+        return mod.getItemStorage().hasItem(Items.SHIELD);
+    }
+
+    private boolean hasIronSword(AltoClef mod) {
+        return mod.getItemStorage().hasItem(Items.IRON_SWORD)
+                || mod.getItemStorage().hasItem(Items.DIAMOND_SWORD)
+                || mod.getItemStorage().hasItem(Items.NETHERITE_SWORD)
+                || mod.getItemStorage().hasItem(Items.STONE_SWORD)
+                || mod.getItemStorage().hasItem(Items.WOODEN_SWORD);
+    }
+
+    private ToolRequirements calculateToolRequirements(AltoClef mod) {
+        ToolRequirements req = new ToolRequirements();
+
+        if (!hasShieldEquipped(mod))                               req.addShield();
+        if (!mod.getItemStorage().hasItem(Items.WATER_BUCKET))     req.addWaterBucket();
+
+        boolean needsPickaxe = !mod.getItemStorage().hasItem(Items.IRON_PICKAXE)
+                && !mod.getItemStorage().hasItem(Items.DIAMOND_PICKAXE)
+                && !mod.getItemStorage().hasItem(Items.NETHERITE_PICKAXE);
+        if (needsPickaxe)                                          req.addIronPickaxe();
+
+        boolean needsAxe = !mod.getItemStorage().hasItem(Items.IRON_AXE)
+                && !mod.getItemStorage().hasItem(Items.DIAMOND_AXE)
+                && !mod.getItemStorage().hasItem(Items.NETHERITE_AXE);
+        if (needsAxe)                                              req.addIronAxe();
+
+        if (!hasIronSword(mod))                                    req.addIronSword();
+
+        Debug.logMessage("Tool requirements calculated:");
+        Debug.logMessage("  Wood: " + req.getLogsNeeded() + " logs");
+        Debug.logMessage("  Iron: " + req.getIronOreNeeded() + " ore");
+        Debug.logMessage("  Coal: " + req.getCoalNeeded() + " pieces");
+
+        return req;
+    }
+
+    private boolean isDangerous(AltoClef mod) {
+        List<LivingEntity> hostiles = mod.getEntityTracker().getHostiles().stream()
+                .filter(e -> e.squaredDistanceTo(mod.getPlayer()) < DANGER_DETECTION_RADIUS_SQ)
+                .collect(Collectors.toList());
+        if (hostiles.size() > DANGER_HOSTILE_THRESHOLD) {
+            Debug.logWarning("DANGER: " + hostiles.size() + " hostile mobs nearby!");
+            return true;
+        }
+        float health = mod.getPlayer().getHealth();
+        if (health < DANGER_HEALTH_THRESHOLD) {
+            Debug.logWarning("DANGER: Low health (" + health + "/20)");
+            return true;
+        }
+        return false;
+    }
+
+    private Task handleDanger(AltoClef mod) {
+        // Equip shield if available
+        if (!StorageHelper.isArmorEquipped(Items.SHIELD) && mod.getItemStorage().hasItem(Items.SHIELD)) {
             return new EquipArmorTask(Items.SHIELD);
         }
-        
-        // 3. Get necessary tools based on materials BEFORE food
-        // This makes food gathering much more efficient
-        Task toolTask = determineRequiredTools();
-        if (toolTask != null) {
-            return toolTask;
+        // Find a safe location away from mobs
+        BlockPos safeSpot = findSafeLocation(mod);
+        if (safeSpot != null) {
+            setDebugState("DANGER! Retreating to safety...");
+            return new GetToBlockTask(safeSpot);
         }
-
-        // 4. Get food LAST (now we have tools to hunt efficiently)
-        if (StorageHelper.calculateInventoryFoodScore() < FOOD_UNITS) {
-            setDebugState("Getting food (with tools)...");
-            return new CollectFoodTask(FOOD_UNITS);
-        }
-        
-        preparationComplete = true;
         return null;
     }
-    
+
+    private BlockPos findSafeLocation(AltoClef mod) {
+        BlockPos playerPos = mod.getPlayer().getBlockPos();
+        for (int dist = SAFE_SEARCH_MIN_DIST; dist <= SAFE_SEARCH_MAX_DIST; dist += SAFE_SEARCH_DIST_STEP) {
+            for (int angle = 0; angle < 360; angle += SAFE_SEARCH_ANGLE_STEP) {
+                double rad = Math.toRadians(angle);
+                int dx = (int) (Math.cos(rad) * dist);
+                int dz = (int) (Math.sin(rad) * dist);
+                BlockPos candidate = playerPos.add(dx, 0, dz);
+                long mobsNearby = mod.getEntityTracker().getHostiles().stream()
+                        .filter(e -> e.squaredDistanceTo(candidate.getX(), candidate.getY(), candidate.getZ()) < SAFE_LOCATION_RADIUS_SQ)
+                        .count();
+                if (mobsNearby < SAFE_LOCATION_MAX_MOBS) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
+    }
+
     private Task determineRequiredTools() {
         AltoClef mod = AltoClef.getInstance();
 
