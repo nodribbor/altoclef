@@ -3,7 +3,6 @@ package adris.altoclef.tasks.construction;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
-import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PlaceBlockTask;
 import adris.altoclef.tasks.container.StoreInContainerTask;
 import adris.altoclef.tasks.misc.EquipArmorTask;
@@ -49,6 +48,7 @@ public class StageSchematicResourcesTask extends Task {
     private static final double CHEST_PLACEMENT_COOLDOWN_SECONDS = 3.0;
     private static final double MIN_CHEST_SPACING = 1.5;
     private static final int PLACEMENT_WANDER_THRESHOLD = 10;
+    private static final double PROGRESS_REPORT_INTERVAL_SECONDS = 30.0;
     private final String placementName;
     private LitematicaHelper.SchematicPlacementInfo placementInfo;
     private List<MaterialStaging> materialStaging;
@@ -63,6 +63,9 @@ public class StageSchematicResourcesTask extends Task {
     private final TimerGame depositCooldown = new TimerGame(DEPOSIT_COOLDOWN_SECONDS);
     private final Set<BlockPos> attemptedChestPlacements = new HashSet<>();
     private final TimerGame chestPlacementCooldown = new TimerGame(CHEST_PLACEMENT_COOLDOWN_SECONDS);
+    private BlockPos permanentCraftingTablePos = null;
+    private boolean hasPlacedCraftingTable = false;
+    private final TimerGame progressReportTimer = new TimerGame(PROGRESS_REPORT_INTERVAL_SECONDS);
     
     private enum StagePhase {
         INIT,
@@ -123,6 +126,7 @@ public class StageSchematicResourcesTask extends Task {
     
     @Override
     protected void onStart() {
+        AltoClef mod = AltoClef.getInstance();
         currentPhase = StagePhase.INIT;
         currentMaterialIndex = 0;
         preparationComplete = false;
@@ -130,6 +134,22 @@ public class StageSchematicResourcesTask extends Task {
         currentDepositChest = null;
         depositAttempts = 0;
         attemptedChestPlacements.clear();
+        permanentCraftingTablePos = null;
+        hasPlacedCraftingTable = false;
+
+        // Protect the designated crafting table and staging chests from being broken
+        mod.getBehaviour().push();
+        mod.getBehaviour().avoidBlockBreaking(blockPos -> {
+            if (permanentCraftingTablePos != null && blockPos.equals(permanentCraftingTablePos)) {
+                return true;
+            }
+            return stagingChests != null && stagingChests.contains(blockPos);
+        });
+    }
+
+    @Override
+    protected void onStop(Task interruptTask) {
+        AltoClef.getInstance().getBehaviour().pop();
     }
     
     @Override
@@ -138,6 +158,12 @@ public class StageSchematicResourcesTask extends Task {
         if (!LitematicaHelper.isLitematicaLoaded()) {
             Debug.logError("Litematica mod is not loaded! Cannot stage schematic resources.");
             return null;
+        }
+
+        // Periodic progress report
+        if (progressReportTimer.elapsed() && currentPhase != StagePhase.INIT && currentPhase != StagePhase.COMPLETE) {
+            logProgress();
+            progressReportTimer.reset();
         }
 
         // Check completion at the start of every tick (skip INIT, COMPLETE, and early phases)
@@ -208,8 +234,15 @@ public class StageSchematicResourcesTask extends Task {
         }
         
         setDebugState("Preparing tools and equipment...");
+
+        // 1. Ensure a permanent crafting table is available before crafting tools
+        Task tableTask = ensureCraftingTableAvailable();
+        if (tableTask != null) {
+            setDebugState("Setting up crafting table...");
+            return tableTask;
+        }
         
-        // 1. Get shield first for defense
+        // 2. Get shield first for defense
         if (!AltoClef.getInstance().getItemStorage().hasItem(Items.SHIELD)) {
             setDebugState("Getting shield for defense...");
             return TaskCatalogue.getItemTask(Items.SHIELD, 1);
@@ -220,19 +253,13 @@ public class StageSchematicResourcesTask extends Task {
             return new EquipArmorTask(Items.SHIELD);
         }
         
-        // 2. Get necessary tools based on materials BEFORE food
+        // 3. Get necessary tools based on materials BEFORE food
         // This makes food gathering much more efficient
         Task toolTask = determineRequiredTools();
         if (toolTask != null) {
             return toolTask;
         }
 
-        // 3. Ensure we carry a portable crafting table to avoid placing new ones everywhere
-        if (!AltoClef.getInstance().getItemStorage().hasItem(Items.CRAFTING_TABLE)) {
-            setDebugState("Getting portable crafting table...");
-            return getCraftingTableTask();
-        }
-        
         // 4. Get food LAST (now we have tools to hunt efficiently)
         if (StorageHelper.calculateInventoryFoodScore() < FOOD_UNITS) {
             setDebugState("Getting food (with tools)...");
@@ -354,21 +381,81 @@ public class StageSchematicResourcesTask extends Task {
         return null;
     }
 
-    private Task getCraftingTableTask() {
+    private Task ensureCraftingTableAvailable() {
         AltoClef mod = AltoClef.getInstance();
 
-        // Look for a nearby crafting table to pick up instead of crafting a new one
-        Optional<BlockPos> nearbyTable = mod.getBlockScanner().getNearestBlock(
-                mod.getPlayer().getPos(), WorldHelper::canBreak, Blocks.CRAFTING_TABLE);
-        if (nearbyTable.isPresent() &&
-                nearbyTable.get().isWithinDistance(mod.getPlayer().getPos(), 50)) {
-            return new DestroyBlockTask(nearbyTable.get());
+        // Check if our designated crafting table still exists
+        if (permanentCraftingTablePos != null) {
+            Block block = mod.getWorld().getBlockState(permanentCraftingTablePos).getBlock();
+            if (block == Blocks.CRAFTING_TABLE) {
+                // Table is still there – nothing to do
+                return null;
+            } else {
+                Debug.logMessage("Crafting table was destroyed, replacing...");
+                hasPlacedCraftingTable = false;
+                permanentCraftingTablePos = null;
+            }
         }
 
-        // Otherwise craft a new one
-        return TaskCatalogue.getItemTask(Items.CRAFTING_TABLE, 1);
+        // Look for a nearby crafting table we can claim as our permanent one
+        Optional<BlockPos> nearbyTable = mod.getBlockScanner().getNearestBlock(Blocks.CRAFTING_TABLE);
+        if (nearbyTable.isPresent() && nearbyTable.get().isWithinDistance(mod.getPlayer().getPos(), 50)) {
+            permanentCraftingTablePos = nearbyTable.get();
+            Debug.logMessage("Found existing crafting table at " + permanentCraftingTablePos.toShortString());
+            return null;
+        }
+
+        // Need to place a new crafting table at a safe location
+        if (!hasPlacedCraftingTable) {
+            if (!mod.getItemStorage().hasItem(Items.CRAFTING_TABLE)) {
+                return TaskCatalogue.getItemTask(Items.CRAFTING_TABLE, 1);
+            }
+
+            if (placementInfo != null) {
+                BlockPos safePos = findSafeCraftingTableLocation(placementInfo.getOrigin());
+                if (safePos != null) {
+                    permanentCraftingTablePos = safePos;
+                    hasPlacedCraftingTable = true;
+                    Debug.logMessage("Placing permanent crafting table at " + safePos.toShortString());
+                    return new PlaceBlockTask(safePos, new Block[]{Blocks.CRAFTING_TABLE}, false, false);
+                }
+            }
+
+            // Fallback: place nearby without a specific position (let CraftInTableTask handle it)
+            hasPlacedCraftingTable = true;
+        }
+
+        return null;
     }
-    
+
+    private BlockPos findSafeCraftingTableLocation(BlockPos near) {
+        AltoClef mod = AltoClef.getInstance();
+
+        for (int distance = 5; distance <= 15; distance += 2) {
+            for (int dx = -distance; dx <= distance; dx += 2) {
+                for (int dz = -distance; dz <= distance; dz += 2) {
+                    BlockPos candidate = near.add(dx, 0, dz);
+
+                    for (int dy = 3; dy >= -2; dy--) {
+                        BlockPos pos = candidate.add(0, dy, 0);
+                        BlockPos below = pos.down();
+
+                        BlockState belowState = mod.getWorld().getBlockState(below);
+
+                        boolean canPlace = WorldHelper.canPlace(pos);
+                        boolean solidBelow = WorldHelper.isSolidBlock(below);
+
+                        if (canPlace && solidBelow && !isLiquid(belowState) && isOutsideSchematicBounds(pos)) {
+                            return pos;
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
     private boolean isStoneBasedMaterial(Item item) {
         return item == Items.STONE || item == Items.COBBLESTONE || 
                item == Items.STONE_BRICKS || item == Items.SMOOTH_STONE ||
@@ -748,6 +835,38 @@ public class StageSchematicResourcesTask extends Task {
         }
         return true;
     }
+
+    private void logProgress() {
+        if (materialStaging == null || materialStaging.isEmpty()) return;
+        updateInventoryCounts();
+
+        int totalTypes = materialStaging.size();
+        int completedTypes = 0;
+        long totalItemsNeeded = 0;
+        long totalItemsGathered = 0;
+
+        Debug.logMessage("========== PROGRESS REPORT ==========");
+        Debug.logMessage("Current phase: " + currentPhase);
+
+        for (MaterialStaging staging : materialStaging) {
+            long total = staging.currentlyInInventory + staging.currentlyInChests;
+            long needed = staging.totalRequired;
+            totalItemsNeeded += needed;
+            totalItemsGathered += Math.min(total, needed);
+            if (total >= needed) {
+                completedTypes++;
+            } else {
+                Debug.logMessage("  " + staging.itemStack.getItem() + ": " + total + "/" + needed + " (" + (needed - total) + " left)");
+            }
+        }
+
+        int percentTypes = totalTypes > 0 ? (int) ((completedTypes * 100.0) / totalTypes) : 0;
+        int percentItems = totalItemsNeeded > 0 ? (int) ((totalItemsGathered * 100.0) / totalItemsNeeded) : 0;
+
+        Debug.logMessage("Material types: " + completedTypes + "/" + totalTypes + " (" + percentTypes + "% complete)");
+        Debug.logMessage("Total items: " + totalItemsGathered + "/" + totalItemsNeeded + " (" + percentItems + "% complete)");
+        Debug.logMessage("=====================================");
+    }
     
     private List<BlockPos> findNearbyChests(BlockPos center, int radius) {
         List<BlockPos> chests = new ArrayList<>();
@@ -877,11 +996,6 @@ public class StageSchematicResourcesTask extends Task {
         }
 
         return bestChest;
-    }
-    
-    @Override
-    protected void onStop(Task interruptTask) {
-        // Cleanup
     }
     
     @Override
