@@ -4,14 +4,17 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.construction.PlaceBlockTask;
+import adris.altoclef.tasks.container.SmeltInFurnaceTask;
 import adris.altoclef.tasks.container.StoreInContainerTask;
 import adris.altoclef.tasks.misc.EquipArmorTask;
+import adris.altoclef.tasks.misc.SleepThroughNightTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.LitematicaHelper;
+import adris.altoclef.util.SmeltTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -45,6 +48,8 @@ public class StageSchematicResourcesTask extends Task {
     private static final int MAX_PLACEMENT_ATTEMPTS = 50;
     private static final double MIN_SCHEMATIC_CLEARANCE = 3.0;
     private static final int MIN_CHEST_DISTANCE = 2;
+    private static final long TICKS_PER_DAY = 24000;
+    private static final long NIGHT_START_TICK = 13000;
     private static final int MAX_CHEST_DISTANCE = 10;
     private static final int MAX_DEPOSIT_ATTEMPTS = 3;
     private static final double DEPOSIT_COOLDOWN_SECONDS = 2.0;
@@ -80,7 +85,9 @@ public class StageSchematicResourcesTask extends Task {
     private final Set<BlockPos> attemptedChestPlacements = new HashSet<>();
     private final TimerGame chestPlacementCooldown = new TimerGame(CHEST_PLACEMENT_COOLDOWN_SECONDS);
     private BlockPos permanentCraftingTablePos = null;
+    private BlockPos craftingTableTargetPos = null;
     private boolean hasPlacedCraftingTable = false;
+    private int cachedChestsNeeded = -1;
     private final TimerGame progressReportTimer = new TimerGame(PROGRESS_REPORT_INTERVAL_SECONDS);
     private PrepPhase currentPrepPhase = PrepPhase.CALCULATE_NEEDS;
     private ToolRequirements toolReqs = null;
@@ -180,7 +187,9 @@ public class StageSchematicResourcesTask extends Task {
         depositAttempts = 0;
         attemptedChestPlacements.clear();
         permanentCraftingTablePos = null;
+        craftingTableTargetPos = null;
         hasPlacedCraftingTable = false;
+        cachedChestsNeeded = -1;
         currentPrepPhase = PrepPhase.CALCULATE_NEEDS;
         toolReqs = null;
         inDanger = false;
@@ -189,6 +198,9 @@ public class StageSchematicResourcesTask extends Task {
         mod.getBehaviour().push();
         mod.getBehaviour().avoidBlockBreaking(blockPos -> {
             if (permanentCraftingTablePos != null && blockPos.equals(permanentCraftingTablePos)) {
+                return true;
+            }
+            if (craftingTableTargetPos != null && blockPos.equals(craftingTableTargetPos)) {
                 return true;
             }
             return stagingChests != null && stagingChests.contains(blockPos);
@@ -208,8 +220,15 @@ public class StageSchematicResourcesTask extends Task {
             return null;
         }
 
-        // Danger check every 2 seconds
+        // Sleep through the night
         AltoClef mod = AltoClef.getInstance();
+        long timeOfDay = mod.getWorld().getTimeOfDay() % TICKS_PER_DAY;
+        if (timeOfDay >= NIGHT_START_TICK) {
+            setDebugState("Sleeping through the night...");
+            return new SleepThroughNightTask();
+        }
+
+        // Danger check every 2 seconds
         if (dangerCheckTimer.elapsed()) {
             dangerCheckTimer.reset();
             boolean dangerous = isDangerous(mod);
@@ -392,7 +411,14 @@ public class StageSchematicResourcesTask extends Task {
                 Task toolTask = determineRequiredTools();
                 if (toolTask != null) return toolTask;
 
-                // 5. Food
+                // 5. Cook any raw meat before checking food level
+                Task cookTask = getCookRawMeatTask(mod);
+                if (cookTask != null) {
+                    setDebugState("Cooking raw meat...");
+                    return cookTask;
+                }
+
+                // 6. Food
                 if (StorageHelper.calculateInventoryFoodScore() < FOOD_UNITS) {
                     setDebugState("Getting food (with tools)...");
                     return new CollectFoodTask(FOOD_UNITS);
@@ -430,6 +456,29 @@ public class StageSchematicResourcesTask extends Task {
                 || mod.getItemStorage().hasItem(Items.NETHERITE_SWORD)
                 || mod.getItemStorage().hasItem(Items.STONE_SWORD)
                 || mod.getItemStorage().hasItem(Items.WOODEN_SWORD);
+    }
+
+    /**
+     * Returns a task to smelt raw meat into cooked meat, or null if there is nothing to cook.
+     */
+    private Task getCookRawMeatTask(AltoClef mod) {
+        Item[][] rawToCooked = {
+            {Items.BEEF,     Items.COOKED_BEEF},
+            {Items.PORKCHOP, Items.COOKED_PORKCHOP},
+            {Items.CHICKEN,  Items.COOKED_CHICKEN},
+            {Items.MUTTON,   Items.COOKED_MUTTON},
+            {Items.RABBIT,   Items.COOKED_RABBIT},
+        };
+        for (Item[] pair : rawToCooked) {
+            int rawCount = mod.getItemStorage().getItemCount(pair[0]);
+            if (rawCount > 0) {
+                return new SmeltInFurnaceTask(new SmeltTarget(
+                    new ItemTarget(pair[1], rawCount),
+                    new ItemTarget(pair[0], rawCount)
+                ));
+            }
+        }
+        return null;
     }
 
     private ToolRequirements calculateToolRequirements(AltoClef mod) {
@@ -621,17 +670,30 @@ public class StageSchematicResourcesTask extends Task {
     private Task ensureCraftingTableAvailable() {
         AltoClef mod = AltoClef.getInstance();
 
-        // Check if our designated crafting table still exists
+        // Check if our confirmed crafting table still exists
         if (permanentCraftingTablePos != null) {
             Block block = mod.getWorld().getBlockState(permanentCraftingTablePos).getBlock();
             if (block == Blocks.CRAFTING_TABLE) {
                 // Table is still there – nothing to do
                 return null;
             } else {
-                Debug.logMessage("Crafting table was destroyed, replacing...");
-                hasPlacedCraftingTable = false;
+                Debug.logMessage("Crafting table was destroyed, finding/placing new one...");
                 permanentCraftingTablePos = null;
+                craftingTableTargetPos = null;
+                hasPlacedCraftingTable = false;
             }
+        }
+
+        // Check if a pending placement has completed
+        if (craftingTableTargetPos != null) {
+            Block block = mod.getWorld().getBlockState(craftingTableTargetPos).getBlock();
+            if (block == Blocks.CRAFTING_TABLE) {
+                permanentCraftingTablePos = craftingTableTargetPos;
+                Debug.logMessage("Crafting table confirmed at " + permanentCraftingTablePos.toShortString());
+                return null;
+            }
+            // Placement still in progress – keep returning the task
+            return new PlaceBlockTask(craftingTableTargetPos, new Block[]{Blocks.CRAFTING_TABLE}, false, false);
         }
 
         // Look for a nearby crafting table we can claim as our permanent one
@@ -651,14 +713,14 @@ public class StageSchematicResourcesTask extends Task {
             if (placementInfo != null) {
                 BlockPos safePos = findSafeCraftingTableLocation(placementInfo.getOrigin());
                 if (safePos != null) {
-                    permanentCraftingTablePos = safePos;
+                    craftingTableTargetPos = safePos;
                     hasPlacedCraftingTable = true;
-                    Debug.logMessage("Placing permanent crafting table at " + safePos.toShortString());
+                    Debug.logMessage("Placing crafting table at " + safePos.toShortString());
                     return new PlaceBlockTask(safePos, new Block[]{Blocks.CRAFTING_TABLE}, false, false);
                 }
             }
 
-            // Fallback: place nearby without a specific position (let CraftInTableTask handle it)
+            // Fallback: let CraftInTableTask handle placement
             hasPlacedCraftingTable = true;
         }
 
@@ -752,7 +814,11 @@ public class StageSchematicResourcesTask extends Task {
         setDebugState("Setting up storage chests...");
 
         BlockPos searchCenter = placementInfo.getOrigin();
-        int chestsNeeded = calculateRequiredChests();
+        // Calculate once and cache to avoid spam-logging every tick
+        if (cachedChestsNeeded < 0) {
+            cachedChestsNeeded = calculateRequiredChests();
+        }
+        int chestsNeeded = cachedChestsNeeded;
 
         // CRITICAL: Refresh chest list to include newly placed chests
         stagingChests = findNearbyChests(searchCenter, SEARCH_RADIUS);
@@ -817,7 +883,10 @@ public class StageSchematicResourcesTask extends Task {
     }
 
     private Task handleValidateChests() {
-        int chestsNeeded = calculateRequiredChests();
+        if (cachedChestsNeeded < 0) {
+            cachedChestsNeeded = calculateRequiredChests();
+        }
+        int chestsNeeded = cachedChestsNeeded;
 
         BlockPos searchCenter = placementInfo.getOrigin();
         stagingChests = findNearbyChests(searchCenter, SEARCH_RADIUS);
