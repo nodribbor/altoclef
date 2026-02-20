@@ -61,6 +61,10 @@ public class StageSchematicResourcesTask extends Task {
     private static final int WOOD_BUFFER_LOGS = 3;        // extra logs for crafting table/sticks
     private static final int IRON_ORE_BUFFER = 2;         // extra iron for waste/anvil
     private static final int COAL_BUFFER = 5;             // extra coal for fuel
+    private static final int DIAMONDS_FOR_ARMOR = 24;    // helmet(5)+chestplate(8)+leggings(7)+boots(4)
+    private static final int DIAMONDS_FOR_TOOLS = 11;    // pickaxe(3)+axe(3)+sword(2)+shovel(1)+hoe(2)
+    private static final int DIAMONDS_BUFFER = 10;       // extra diamonds for repairs
+    private static final int DIAMONDS_TOTAL = DIAMONDS_FOR_ARMOR + DIAMONDS_FOR_TOOLS + DIAMONDS_BUFFER; // 45
     private static final double DANGER_DETECTION_RADIUS_SQ = 64;  // 8 block radius
     private static final int DANGER_HOSTILE_THRESHOLD = 5;
     private static final float DANGER_HEALTH_THRESHOLD = 10.0f;   // 5 hearts
@@ -111,18 +115,22 @@ public class StageSchematicResourcesTask extends Task {
         MINE_IRON_AND_COAL,
         SMELT_IRON,
         CRAFT_ALL_TOOLS,
+        MINE_DIAMONDS,
+        CRAFT_DIAMOND_GEAR,
         COMPLETE
     }
 
     private static class ToolRequirements {
         int woodNeeded = 0;
         int ironNeeded = 0;
+        int diamondsNeeded = 0;
 
         void addShield()      { woodNeeded += 6; ironNeeded += 1; }
         void addIronPickaxe() { woodNeeded += 2; ironNeeded += 3; }
         void addIronAxe()     { woodNeeded += 2; ironNeeded += 3; }
         void addIronSword()   { woodNeeded += 1; ironNeeded += 2; }
         void addWaterBucket() { ironNeeded += 3; }
+        void addDiamondGear() { diamondsNeeded = DIAMONDS_TOTAL; }
 
         int getLogsNeeded()    { return (int) Math.ceil(woodNeeded / 4.0) + WOOD_BUFFER_LOGS; }
         int getIronOreNeeded() { return ironNeeded + IRON_ORE_BUFFER; }
@@ -425,11 +433,121 @@ public class StageSchematicResourcesTask extends Task {
                 }
 
                 Debug.logMessage("========================================");
-                Debug.logMessage("✓✓✓ ALL TOOLS PREPARED ✓✓✓");
+                Debug.logMessage("✓✓✓ IRON TOOLS PREPARED ✓✓✓");
                 Debug.logMessage("  ✓ Water bucket");
                 Debug.logMessage("  ✓ Shield");
                 Debug.logMessage("  ✓ Sword");
                 Debug.logMessage("  ✓ Tools");
+                Debug.logMessage("========================================");
+                currentPrepPhase = PrepPhase.MINE_DIAMONDS;
+                return null;
+            }
+            case MINE_DIAMONDS: {
+                if (toolReqs.diamondsNeeded > 0) {
+                    int diamondsHave = mod.getItemStorage().getItemCount(Items.DIAMOND);
+                    if (diamondsHave < toolReqs.diamondsNeeded) {
+                        setDebugState("Mining diamonds: " + diamondsHave + "/" + toolReqs.diamondsNeeded);
+                        return TaskCatalogue.getItemTask(Items.DIAMOND, toolReqs.diamondsNeeded);
+                    }
+                    Debug.logMessage("✓ Diamonds gathered: " + diamondsHave);
+                }
+                currentPrepPhase = PrepPhase.CRAFT_DIAMOND_GEAR;
+                return null;
+            }
+            case CRAFT_DIAMOND_GEAR: {
+                // Craft diamond armor pieces
+                if (!mod.getItemStorage().hasItem(Items.DIAMOND_HELMET)
+                        && !StorageHelper.isArmorEquipped(Items.DIAMOND_HELMET)) {
+                    setDebugState("Crafting diamond helmet...");
+                    return TaskCatalogue.getItemTask(Items.DIAMOND_HELMET, 1);
+                }
+                if (!mod.getItemStorage().hasItem(Items.DIAMOND_CHESTPLATE)
+                        && !StorageHelper.isArmorEquipped(Items.DIAMOND_CHESTPLATE)) {
+                    setDebugState("Crafting diamond chestplate...");
+                    return TaskCatalogue.getItemTask(Items.DIAMOND_CHESTPLATE, 1);
+                }
+                if (!mod.getItemStorage().hasItem(Items.DIAMOND_LEGGINGS)
+                        && !StorageHelper.isArmorEquipped(Items.DIAMOND_LEGGINGS)) {
+                    setDebugState("Crafting diamond leggings...");
+                    return TaskCatalogue.getItemTask(Items.DIAMOND_LEGGINGS, 1);
+                }
+                if (!mod.getItemStorage().hasItem(Items.DIAMOND_BOOTS)
+                        && !StorageHelper.isArmorEquipped(Items.DIAMOND_BOOTS)) {
+                    setDebugState("Crafting diamond boots...");
+                    return TaskCatalogue.getItemTask(Items.DIAMOND_BOOTS, 1);
+                }
+
+                // Equip diamond armor
+                if (!StorageHelper.isArmorEquipped(Items.DIAMOND_HELMET)
+                        && mod.getItemStorage().hasItem(Items.DIAMOND_HELMET)) {
+                    setDebugState("Equipping diamond helmet...");
+                    return new EquipArmorTask(Items.DIAMOND_HELMET);
+                }
+                if (!StorageHelper.isArmorEquipped(Items.DIAMOND_CHESTPLATE)
+                        && mod.getItemStorage().hasItem(Items.DIAMOND_CHESTPLATE)) {
+                    setDebugState("Equipping diamond chestplate...");
+                    return new EquipArmorTask(Items.DIAMOND_CHESTPLATE);
+                }
+                if (!StorageHelper.isArmorEquipped(Items.DIAMOND_LEGGINGS)
+                        && mod.getItemStorage().hasItem(Items.DIAMOND_LEGGINGS)) {
+                    setDebugState("Equipping diamond leggings...");
+                    return new EquipArmorTask(Items.DIAMOND_LEGGINGS);
+                }
+                if (!StorageHelper.isArmorEquipped(Items.DIAMOND_BOOTS)
+                        && mod.getItemStorage().hasItem(Items.DIAMOND_BOOTS)) {
+                    setDebugState("Equipping diamond boots...");
+                    return new EquipArmorTask(Items.DIAMOND_BOOTS);
+                }
+
+                // Craft diamond tools
+                if (!mod.getItemStorage().hasItem(Items.DIAMOND_PICKAXE)
+                        && !mod.getItemStorage().hasItem(Items.NETHERITE_PICKAXE)) {
+                    setDebugState("Crafting diamond pickaxe...");
+                    return TaskCatalogue.getItemTask(Items.DIAMOND_PICKAXE, 1);
+                }
+                if (!mod.getItemStorage().hasItem(Items.DIAMOND_AXE)
+                        && !mod.getItemStorage().hasItem(Items.NETHERITE_AXE)) {
+                    setDebugState("Crafting diamond axe...");
+                    return TaskCatalogue.getItemTask(Items.DIAMOND_AXE, 1);
+                }
+                if (!mod.getItemStorage().hasItem(Items.DIAMOND_SWORD)
+                        && !mod.getItemStorage().hasItem(Items.NETHERITE_SWORD)) {
+                    setDebugState("Crafting diamond sword...");
+                    return TaskCatalogue.getItemTask(Items.DIAMOND_SWORD, 1);
+                }
+                if (!mod.getItemStorage().hasItem(Items.DIAMOND_SHOVEL)
+                        && !mod.getItemStorage().hasItem(Items.NETHERITE_SHOVEL)) {
+                    setDebugState("Crafting diamond shovel...");
+                    return TaskCatalogue.getItemTask(Items.DIAMOND_SHOVEL, 1);
+                }
+                if (!mod.getItemStorage().hasItem(Items.DIAMOND_HOE)
+                        && !mod.getItemStorage().hasItem(Items.NETHERITE_HOE)) {
+                    setDebugState("Crafting diamond hoe...");
+                    return TaskCatalogue.getItemTask(Items.DIAMOND_HOE, 1);
+                }
+
+                // Ensure shield
+                if (!hasShieldEquipped(mod)) {
+                    setDebugState("Getting shield for defense...");
+                    return TaskCatalogue.getItemTask(Items.SHIELD, 1);
+                }
+                if (!StorageHelper.isArmorEquipped(Items.SHIELD)) {
+                    setDebugState("Equipping shield to offhand...");
+                    return new EquipArmorTask(Items.SHIELD);
+                }
+
+                // Food check
+                if (StorageHelper.calculateInventoryFoodScore() < FOOD_UNITS) {
+                    setDebugState("Getting food (after diamond gear)...");
+                    return new CollectFoodTask(FOOD_UNITS);
+                }
+
+                Debug.logMessage("========================================");
+                Debug.logMessage("✓✓✓ ALL DIAMOND GEAR PREPARED ✓✓✓");
+                Debug.logMessage("  ✓ Diamond armor (helmet, chestplate, leggings, boots)");
+                Debug.logMessage("  ✓ Diamond tools (pickaxe, axe, sword, shovel, hoe)");
+                Debug.logMessage("  ✓ Shield");
+                Debug.logMessage("  ✓ Food");
                 Debug.logMessage("========================================");
                 currentPrepPhase = PrepPhase.COMPLETE;
                 return null;
@@ -499,12 +617,46 @@ public class StageSchematicResourcesTask extends Task {
 
         if (!hasIronSword(mod))                                    req.addIronSword();
 
+        if (needsDiamondOrNetheriteGear(mod))                      req.addDiamondGear();
+
         Debug.logMessage("Tool requirements calculated:");
         Debug.logMessage("  Wood: " + req.getLogsNeeded() + " logs");
         Debug.logMessage("  Iron: " + req.getIronOreNeeded() + " ore");
         Debug.logMessage("  Coal: " + req.getCoalNeeded() + " pieces");
+        Debug.logMessage("  Diamonds: " + req.diamondsNeeded);
 
         return req;
+    }
+
+    /**
+     * Returns true if any piece of diamond (or better) gear is missing from inventory or equipment slots.
+     */
+    private boolean needsDiamondOrNetheriteGear(AltoClef mod) {
+        // Armor pieces: check inventory and equipped slots (diamond or netherite both count)
+        if (!mod.getItemStorage().hasItem(Items.DIAMOND_HELMET)
+                && !StorageHelper.isArmorEquipped(Items.DIAMOND_HELMET)
+                && !StorageHelper.isArmorEquipped(Items.NETHERITE_HELMET)) return true;
+        if (!mod.getItemStorage().hasItem(Items.DIAMOND_CHESTPLATE)
+                && !StorageHelper.isArmorEquipped(Items.DIAMOND_CHESTPLATE)
+                && !StorageHelper.isArmorEquipped(Items.NETHERITE_CHESTPLATE)) return true;
+        if (!mod.getItemStorage().hasItem(Items.DIAMOND_LEGGINGS)
+                && !StorageHelper.isArmorEquipped(Items.DIAMOND_LEGGINGS)
+                && !StorageHelper.isArmorEquipped(Items.NETHERITE_LEGGINGS)) return true;
+        if (!mod.getItemStorage().hasItem(Items.DIAMOND_BOOTS)
+                && !StorageHelper.isArmorEquipped(Items.DIAMOND_BOOTS)
+                && !StorageHelper.isArmorEquipped(Items.NETHERITE_BOOTS)) return true;
+        // Tools: check inventory only (netherite supersedes diamond)
+        if (!mod.getItemStorage().hasItem(Items.DIAMOND_PICKAXE)
+                && !mod.getItemStorage().hasItem(Items.NETHERITE_PICKAXE)) return true;
+        if (!mod.getItemStorage().hasItem(Items.DIAMOND_AXE)
+                && !mod.getItemStorage().hasItem(Items.NETHERITE_AXE)) return true;
+        if (!mod.getItemStorage().hasItem(Items.DIAMOND_SWORD)
+                && !mod.getItemStorage().hasItem(Items.NETHERITE_SWORD)) return true;
+        if (!mod.getItemStorage().hasItem(Items.DIAMOND_SHOVEL)
+                && !mod.getItemStorage().hasItem(Items.NETHERITE_SHOVEL)) return true;
+        if (!mod.getItemStorage().hasItem(Items.DIAMOND_HOE)
+                && !mod.getItemStorage().hasItem(Items.NETHERITE_HOE)) return true;
+        return false;
     }
 
     private boolean isDangerous(AltoClef mod) {
