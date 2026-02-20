@@ -10,14 +10,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    env:
-      LATEST_VERSION: "1.21"
-      INCLUDE_DEVLIBS: "true"
-      
-      # Warning: Don't add too many versions because it takes a lot of space in the artifacts,
-      # and I've gotten an email from GitHub about it so please just don't.
-      VERSIONS_TO_BUILD: "1.16.5 1.17.1 1.18.2 1.20.4 1.21"
-
     steps:
       - uses: actions/checkout@v2
 
@@ -30,27 +22,13 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Create versions directory and mainProject
-        run: |
-          mkdir -p ./versions
-          if [ ! -f ./versions/mainProject ]; then
-            echo $LATEST_VERSION > ./versions/mainProject
-          fi
-
       - name: Build with Gradle
-        run: ./gradlew build
+        run: ./gradlew :1.21.11:build
 
       - name: Create artifact directory structure
         run: |
-          mkdir -p artifacts
-          for version in $VERSIONS_TO_BUILD; do
-            mkdir -p artifacts/$version/libs
-            cp ./versions/$version/build/libs/*.jar artifacts/$version/libs/
-            if [ "$INCLUDE_DEVLIBS" = "true" ]; then
-              mkdir -p artifacts/$version/devlibs
-              cp ./versions/$version/build/devlibs/*.jar artifacts/$version/devlibs/
-            fi
-          done
+          mkdir -p artifacts/1.21.11/libs
+          cp ./versions/1.21.11/build/libs/*.jar artifacts/1.21.11/libs/
 
       - name: Compute hashes
         run: |
